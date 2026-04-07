@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** Ocean team
+
 ## Summary
 
 Blueprint Component Declarations Service (BCDS) is a stateless translation layer that converts blueprint component configurations into DDM declarations stored in Declaration Storage Service (DSS). When a blueprint is saved or updated, the Blueprints service posts a component's typed configuration to BCDS, which validates it, maps it to the correct Apple DDM declaration types, creates those declarations in DSS, and returns the resulting DSS IDs and version hashes (`serverToken`s). BCDS also provides per-component validation endpoints that return field-level errors without writing anything, and cleanup endpoints that delete previously-created declarations from DSS. The service owns no persistent state of its own — all storage is delegated to DSS. It is a Java 21 / Spring Boot 3 MVC service (not reactive) using virtual threads.

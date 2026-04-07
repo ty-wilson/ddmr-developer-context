@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** Goldminers team
+
 ## Summary
 
 The MDM Schema Ingest Pipeline is a fully event-driven, serverless system that tracks Apple's public `device-management` GitHub repo, transforms its YAML payload definitions into JSON Schema, and serves the results over an internal HTTPS endpoint. It is owned by the Goldminers team. The Lambda code lives in `mdm-schema-ingest-inbound-adapter` (a TypeScript/Node.js npm-workspaces monorepo); the AWS infrastructure is declared in `mdm-schema-ingest-infrastructure` using Terraform + Terragrunt. Schemas are written to versioned S3 prefixes and served through an internal ALB backed by a path-mapping Lambda. Deployed to three dedicated AWS accounts: dev (`380922964950`), stage (`369976064392`), prod (`984688522419`), all in `us-east-2`.

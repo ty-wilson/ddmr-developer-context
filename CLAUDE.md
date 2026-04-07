@@ -1,41 +1,37 @@
-# DDmR Platform — Service Map
+# Blueprints Platform — Service Map
+
+All services below participate in the Blueprints system (`system: blueprints` in Backstage). Team ownership is noted per service.
 
 ## Services
 
-### Scoping & Targeting
+### DDmR Team
 - **scoping-engine** — Scope membership, device-to-group resolution, device sync state. DynamoDB + Pulsar.
-
-### Declarations (DDM)
 - **declaration-service** — Declaration CRUD: fragment building, validation, translation, activation. Stateless REST API.
 - **declaration-storage-service** — Persists declaration data (DynamoDB). Publishes `declaration-assignment-changed` events.
-- **device-declaration-reporting-service** — Reporting backend for declaration status per device.
+- **blueprint-component-custom-declarations** — Custom declarations blueprint component. Stateless adapter to DSS.
+- **ddmr-jwt-sidecar** — Micronaut JWT validation proxy, deployed as pod sidecar on port 7070.
+- **ddmr-authorizer-tenant** — API gateway authorizer: resolves JWT claims → tenant ID via DynamoDB lookup.
 
-### Blueprints (UI Orchestration)
+### Ocean Team
 - **blueprint-management-service** — Blueprint CRUD, component orchestration. PostgreSQL + Pulsar async deploys.
 - **blueprint-components-registry-service** — Component library catalog: fragment names, types, icons.
 - **blueprint-component-declarations-service** — Declarations fragment metadata for the component registry.
 - **blueprint-component-sw-update-service** — Software update blueprint component backend.
-- **blueprint-component-custom-declarations** — Custom declarations component.
 
-### Configuration Profiles
-- **configuration-profile-service** — Config profile CRUD, plist handling.
-- **configuration-profile-plist-migrator** — Plist migration tooling.
-
-### MDM Schema
+### Goldminers Team
+- **configuration-profile-service** — Config profile CRUD, plist handling. MongoDB + S3.
+- **configuration-profile-plist-migrator** — Plist migration tooling. GraalVM native.
 - **mdm-schema-ingest-inbound-adapter** — Hourly Lambda: ingests Apple DDM repo → transforms → S3.
-- **mdm-schema-ingest-infrastructure** — Terraform/Terragrunt infra for the schema pipeline (ALB, Lambdas, S3, EventBridge).
+- **mdm-schema-ingest-infrastructure** — Terraform/Terragrunt infra for the schema pipeline.
 - **mdm-ui-schema** — UI-specific schema customizations.
 
-### Auth & Tenancy
-- **ddmr-jwt-sidecar** — Micronaut JWT validation proxy, deployed as pod sidecar on port 7070.
-- **ddmr-authorizer-tenant** — API gateway Lambda: resolves JWT claims → tenant ID via DynamoDB lookup.
-- **tenants-odin** — Tenant management service.
-
-### Frontend
-- **micro-frontend-hub** — Nx + pnpm monorepo: all MFE apps (declarations, config-profiles, JSFG, app-switcher, etc.)
+### Other Teams
+- **tenants-odin** (Angry Cockroaches) — Tenant management service. DynamoDB.
+- **device-declaration-reporting-service** (Jabberwocky) — Reporting backend for declaration status per device. Early development.
+- **micro-frontend-hub** — Nx + pnpm monorepo: all MFE apps (declarations, config-profiles, JSFG, etc.)
 - **json-schema-form-generator** — Standalone repo for the JSFG component.
 
-### Infrastructure & Shared Libraries
+### Infrastructure & Shared Libraries (DDmR)
 - **ddmr-infrastructure** — OpenTofu + Terragrunt IaC (HC environment). GitHub Actions → Highway-to-Prod.
 - **ddmr-terraform** — Legacy Terragrunt IaC (commercial environments). Jenkins.
 - **tyk-gateway-management** — Tyk API gateway route definitions (YAML CRDs, per-environment).
@@ -51,19 +47,19 @@
 - **ddmr-deployments** — Legacy ApplicationSets for tooling (scope-membership-tool, tenant-migration).
 - **ddmr-jenkins** — Groovy shared library for older Jenkins pipelines.
 
-### Cross-Team Services (not DDmR-owned, but interact with DDmR via events or HTTP)
-- **app-lifecycle-management-engine-client** — Client lib for VPP/app lifecycle service; called by scoping-engine for app assignments.
-- **blueprint-report-aggregation-service** (Ocean) — Consumes device-scope-membership-changed, device-management-channel-changed, apple-ddm/statusreport.
-- **blueprint-deployment-service** (Ocean) — Produces blueprint-deployment-task, blueprint-deployment-changed. Handles async blueprint deploys.
-- **compliance-benchmark-report-service** (Mars/Red) — Consumes device-group-changed, device-*-changed, device-management-state.
+### External Services (interact with Blueprints via events or HTTP)
+- **blueprint-report-aggregation-service** (Ocean) — Consumes device-scope-membership-changed, device-management-channel-changed.
+- **blueprint-deployment-service** (Ocean) — Produces blueprint-deployment-task, blueprint-deployment-changed.
+- **compliance-benchmark-report-service** (Mars/Red) — Consumes device-group-changed, device-*-changed events.
 - **compliance-benchmark-engine** (Red) — Produces verified-rules topic.
 - **spaghetti-mux** (Pulsaroni) — Pulsar event relay. Consumes declaration-assignment-changed and SCIM events.
-- **m2m-robocop** — M2M authentication library used by all DDmR services.
+- **m2m-robocop** — M2M authentication library used by all services.
 - **jamf-school-helm-apns** (Pixels) — Consumes declaration-assignment-changed.
 - **Jamf Pro Server / jamf-messaging** — Produces platform events: device-group-changed, device-management-channel-changed, device-*-state events.
-- **device-identity-mapping-service** (Team Rocket) — Consumes device-identity-certificate-issued, device-management-state, enrollment-ca-changed.
-- **scim-directory-service** (Orange) — Produces SCIM events (scim-group-state, scim-user-*).
-- **mms-pigeon** (PowerPC) — Produces 6 apple-media-* topics in pdd/mms/ namespace.
+- **device-identity-mapping-service** (Team Rocket) — Consumes device-identity-certificate-issued, device-management-state.
+- **scim-directory-service** (Orange) — Produces SCIM events.
+- **mms-pigeon** (PowerPC) — Produces apple-media-* topics in pdd/mms/ namespace.
+- **app-lifecycle-management-engine-client** — Client lib for VPP/app lifecycle service.
 
 ## Communication
 

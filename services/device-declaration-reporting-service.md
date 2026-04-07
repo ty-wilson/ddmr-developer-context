@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** Jabberwocky team
+
 ## Summary
 
 Device Declaration Reporting Service (DRS) is a Spring Boot 3.5 / Java 21 service owned by the jabberwocky team. Its intended role is device-oriented reporting of Declaration Management declarations — presenting per-device declaration status in a way that is useful to callers who need to know what declarations are currently applied to a given device and whether those declarations are in a desired state. The service is deployed to production but is **early in development**: as of this writing, the only implemented endpoint is a placeholder `/test` route, and major integration points (M2M auth, Pulsar consumption of status reports, S3/MinIO storage, Declaration Storage Service calls) are all stubbed out or commented in config. Treat this service's API surface as unstable — no stable endpoints exist for external callers yet.

@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** DDmR team
+
 ## Summary
 
 Scoping Engine is the platform service responsible for tracking which devices belong to which scopes, and for pushing the right declarations and VPP app assignments to devices when scope membership changes. A "scope" is a named collection of device groups with an enabled/disabled state; when a device's group membership changes, Scoping Engine recomputes that device's scope set, updates a management-properties declaration in Declaration Storage Service, and fires membership-changed events so downstream services can react. It is the authority on scope-to-group, scope-to-assignment, and device-to-group membership state.

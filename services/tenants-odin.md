@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** Angry Cockroaches team
+
 ## Summary
 
 Tenants Odin is the system of record for organizations, environments, and tenants across the Jamf platform. It sits at the center of multi-product provisioning: when any Jamf product (Pro, Now, School, Protect, JSC, JETP, Wizy) needs to resolve "which organization does this customer belong to and where is their tenant deployed," it asks Odin. The service exposes a versioned REST API (v1–v4 on most endpoints) and is backed by DynamoDB. It is owned by the Angry Cockroaches team and is a Tier 1 service deployed to us-east-1, eu-central-1, and ap-northeast-1.

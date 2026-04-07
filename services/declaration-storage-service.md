@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** DDmR team
+
 ## Summary
 
 Declaration Storage Service (DSS) is the system of record for Apple Declarative Device Management (DDM) declarations and their device assignments. It owns two things: declaration payloads (the JSON content, group, type, and a SHA-256 `serverToken` that Apple devices use to detect changes) and assignment records that map a `(tenant, device, channel)` tuple to a declaration under a named identifier. DSS exposes both a product-facing API (used by Jamf services to manage declarations and assignments) and an MDM-facing API (used by the MDM layer to satisfy Apple DDM check-in requests). When assignments change, DSS publishes a Pulsar event so downstream consumers (e.g., the MDM layer) can trigger device sync. The service is tagged `pii` and `nist` and operates in the `blueprints` system at service tier 2.

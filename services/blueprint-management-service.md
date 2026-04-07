@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** Ocean team
+
 ## Summary
 
 Blueprint Management Service (BMS) is a Spring Boot 3.5 / Java 21 service that owns the lifecycle of blueprints on the Jamf OCEAN platform. A blueprint is a named, versioned configuration object composed of ordered steps, where each step contains components (typed configuration payloads) and optional activation rules. BMS handles CRUD for blueprints, tracks a full version history on every edit, and coordinates deployments asynchronously via Apache Pulsar. It persists everything to PostgreSQL, enforces per-tenant isolation on every query, and integrates with the Component Registry, Tenant Service, and a downstream deployment executor.

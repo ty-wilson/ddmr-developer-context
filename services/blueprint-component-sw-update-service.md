@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** Ocean team
+
 ## Summary
 
 Blueprint Component Software Update Service is a thin translation layer in the Blueprints system. Its job is to convert a software update configuration (target OS version + deadline) into an Apple DDM declaration of type `com.apple.configuration.softwareupdate.enforcement.specific` and persist it in the Declaration Storage Service (DSS). It also provides a validation endpoint that callers can use to check a configuration before committing to translation, and a cleanup endpoint to delete previously created declarations. The service owns no database of its own — all state lives in DSS. It is a Spring Boot 3 / Java 21 service, uses M2M auth for DSS calls, and is part of the `ocean` team's `blueprints` system.

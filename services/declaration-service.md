@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** DDmR team
+
 ## Summary
 
 Declaration Service is a Spring Boot (WebFlux/coroutines) microservice that acts as a translation and validation layer between declaration components (e.g., the Component Registry / Blueprint UI) and the Declaration Storage Service (DSS). When a component configuration containing raw declarations is submitted, declaration-service assigns stable identifiers, resolves cross-declaration payload references, stores each declaration in DSS via the `declaration-product-springboot-starter` client, and returns a list of deployable objects back to the caller. It also handles cleanup (deleting DSS records) and exposes a fragments catalog endpoint so UIs can discover which declaration types are enabled and their display metadata.

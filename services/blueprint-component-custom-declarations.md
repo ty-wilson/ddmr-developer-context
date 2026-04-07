@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** DDmR team
+
 ## Summary
 
 `blueprint-component-custom-declarations` is a lightweight Spring Boot WebFlux microservice that acts as the blueprints system's adapter for user-authored ("custom") declarations. Blueprint Management Service calls this service as part of the blueprint lifecycle — when a blueprint containing custom declaration components is deployed, this service translates the raw declaration payloads into persisted DSS records and generates the stable identifiers that the rest of the scoping/assignment pipeline depends on. It has no database of its own; its only persistent side-effect is writes to Declaration Storage Service (DSS).

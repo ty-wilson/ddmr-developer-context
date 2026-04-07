@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** DDmR team
+
 ## Summary
 
 DDmR Authorizer Tenant is a Spring Boot WebFlux service (not a Lambda despite the name) used by HAProxy as a sub-request authorizer. When a device or client presents a CSA (Cloud Services Architecture) access token, HAProxy calls this service's `/authorize` endpoint. The service validates the JWT, extracts the organization ID and customer/instance ID, looks up or generates a stable tenant ID from DynamoDB, and returns that tenant ID in the `X-TenantId` response header. HAProxy then forwards the header to the upstream service. It is the canonical source of truth for the `organizationId + instanceId → tenantId` mapping across the DDmR platform.

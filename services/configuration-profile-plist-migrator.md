@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** Goldminers team
+
 ## Summary
 
 Configuration Profile Plist Migrator is a Spring Boot service (written in Java, compiled to a GraalVM native binary) that converts legacy Apple Configuration Profile plists into Jamf Blueprints. It operates as an on-demand HTTP API: callers POST raw plist XML and receive either a transformed JSON configuration or a fully-created Blueprint. A separate scheduled-migration flow allows callers to queue a batch of profiles (sourced from the `plist-origin` service) for async processing, with per-migration status tracked in DynamoDB. The service is designed as a migration utility — it does not own device or scope state and does not produce Pulsar events.

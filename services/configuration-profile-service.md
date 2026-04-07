@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** Goldminers team
+
 ## Summary
 
 Configuration Profile Service (CPS) is a Java 21 / Spring Boot 3 microservice owned by the Gold Miners team that has two distinct responsibilities: it manages Apple legacy configuration profiles (stores profile data in MongoDB, serializes them to Apple plist XML format, and stores the plist files in S3) and it implements the DDM (Device Declaration Management) component contract used by blueprint-management-service to validate, translate, and clean up DDM-style configuration profiles as deployable declarations in Declaration Storage Service (DSS). All endpoints require M2M bearer auth via Tyk gateway. The service is deployed in us-east-2, eu-central-1, and ap-northeast-1.

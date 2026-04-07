@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+**Owner:** Ocean team
+
 ## Summary
 
 Blueprint Components Registry Service is the source of truth for which blueprint components and fragments exist and which are available to a given tenant. A "component" is a named unit of configuration capability (e.g., Software Updates, Configuration Profiles) that a blueprint can include. A "fragment" is a sub-unit within a component — it represents a concrete, selectable piece of configuration (e.g., a specific configuration profile domain). The service stores component and fragment metadata in a relational database (Postgres via JPA/Hibernate), evaluates LaunchDarkly feature flags and Jamf product type (PRO vs. SCHOOL) per-tenant at read time to filter what is available, and syncs fragment data on demand from each component's own backing service via Pulsar events and actuator-triggered HTTP fetches. Component definitions (identity, capabilities, web app entry point, supported OS) are seeded from static YAML config at startup via `ComponentsInitializer`; fragment payload details are fetched live from the individual component services.
