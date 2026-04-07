@@ -83,4 +83,4 @@ When you need deeper architectural context, read the relevant doc from `~/Projec
 - **Shared client libraries, messaging client, Gradle plugin** → read `docs/shared-libraries.md`
 - **Micro-frontends, schema pipeline, shell integration** → read `docs/frontend.md`
 
-If you discover that information in these docs is outdated or incorrect based on what you observe in the code, flag it to the user.
+If you discover that information in these docs is outdated or incorrect based on what you observe in the code, flag it to the user. To update the docs, read the instructions at `ddmr-developer-context/.claude/skills/update-context/SKILL.md` (sibling of the repo you're in).
