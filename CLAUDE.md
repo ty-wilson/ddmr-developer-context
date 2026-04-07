@@ -69,7 +69,7 @@
 
 ## Deep Dives
 
-When you need deeper architectural context, read the relevant doc from `~/Projects/DDmR/ddmr-developer-context/docs/`:
+IMPORTANT: When answering questions about cross-service concerns, do NOT guess or infer from partial information. Read the relevant doc below BEFORE answering. These docs contain verified information about service interactions, event consumers, API contracts, and infrastructure that cannot be reliably inferred from a single repo's code.
 
 - **HTTP calls between services, Tyk gateway, API contracts** → read `docs/api-layer.md`
 - **Pulsar events, topic routing, event schemas** → read `docs/event-layer.md`
