@@ -19,11 +19,11 @@ The short SHA (7 characters of `GITHUB_SHA`) is the canonical version token. It 
 
 All workflows live in `.github/workflows/`. The main ones for a service like `scoping-engine`:
 
-- **`ci.yml`** — triggers on push to `main` and `workflow_dispatch`. Calls the four reusable workflows in sequence: `reusable-java-build-test.yml` → `reusable-build-image.yml` → `reusable-helm-validate-package.yml` → release step. Also calls `reusable-api-export.yml` after release and `reusable-notify-failure.yml` on failure.
+- **`ci.yml`** — triggers on push to `main` and `workflow_dispatch`. `reusable-java-build-test.yml` and `reusable-build-image.yml` run in parallel. `reusable-helm-validate-package.yml` waits on `reusable-build-image.yml`. The release step waits on all three. Also calls `reusable-api-export.yml` after release and `reusable-notify-failure.yml` on failure.
 - **`reusable-java-build-test.yml`** — sets up Java 21 (Liberica), starts a local DynamoDB container on port 8000, runs `./gradlew test`, publishes a JUnit test report, and runs SonarQube analysis via `jacocoTestReport sonar`.
-- **`reusable-build-image.yml`** — runs `./gradlew :jib` to build and push the container image to ECR, generates a short SHA, extracts the version tag from `build/resources/main/META-INF/build-info.properties`, and signs the image with cosign using KMS key `arn:aws:kms:us-east-1:359585083818:alias/cosign`.
+- **`reusable-build-image.yml`** — runs `./gradlew :jib` to build and push the container image to ECR, generates a short SHA, extracts the version tag from `build/resources/main/META-INF/build-info.properties`, and signs the image with cosign using KMS key `awskms:///arn:aws:kms:us-east-1:359585083818:alias/cosign`.
 - **`reusable-helm-validate-package.yml`** — validates the Helm chart against ArgoCD using `jamf/github-actions-helm/validate-argocd@v3` (passes `ARGOCD_COMPONENTS_VIEWER` and `GHA_PSV_READ_PRIVATE_KEY`), then packages and pushes the chart OCI artifact to ECR via `jamf/github-actions-helm/package@v2`.
-- **`check-shared-values.yml`** — runs on every PR using `jamf/github-actions-highway-to-prod/check-shared-values@v2`. Checks that the `shared-values-version` file in the repo matches the latest SHA from `platform-shared-values`. Prevents merging with a stale shared values pin.
+- **`check-shared-values.yml`** — runs on every PR using `jamf/github-actions-highway-to-prod/check-shared-values@v2`. Checks that the `shared-values-version` file in the repo matches the latest SHA from `platform-shared-values`. A failure blocks merging if branch protection rules require the check to pass.
 - **`manual-deployment.yml`** — `workflow_dispatch` only. Deploys a specific image tag directly to the sandbox cluster (`use1-ddmr-sbox231207`, account `183197288009`) or perf namespace via `helm upgrade --install`, bypassing ArgoCD. Used for ad-hoc testing.
 - **`branch-build.yml`** — builds images for feature branches without triggering a release or updating the components repo.
 
@@ -137,7 +137,7 @@ The `metacluster-automation: 'true'` label opts the Application into automated p
 
 `ddmr-jenkins` is a Jenkins shared library (Groovy). It lives at `/vars/*.groovy` and `/lib/`. The `vars/` scripts are the callable pipeline steps:
 
-- `updateStaging.groovy` — checks out the `ddmr-deployments` repo, uses `yq` to write new `container.repo` and `container.tag` into `values-stage.yaml` and `values-stable-dev.yaml`, then commits and pushes. Used by older Jenkins pipelines that write directly to `ddmr-deployments` instead of `components`.
+- `updateStaging.groovy` — expects the `ddmr-deployments` repo to already be checked out; does a `git pull` to get the latest, then uses `yq` to write new `container.repo` and `container.tag` into `values-stage.yaml` and `values-stable-dev.yaml`, then commits and pushes. Used by older Jenkins pipelines that write directly to `ddmr-deployments` instead of `components`.
 - `updateProduction.groovy` — same pattern but updates `values-integration.yaml` and `values-prod.yaml`. Requires an `approver` parameter.
 - `syncArgoCD.groovy` — downloads the `argocd` CLI from `argo.jamf.build`, then calls `argocd app sync <name>` followed by `argocd app wait <name>` to block the pipeline until the sync is healthy.
 - `checkoutDeployments.groovy`, `runComponentTests.groovy`, `runSystemTests.groovy`, `captureComponentTestResults.groovy`, `captureSystemTestResults.groovy`, `createLocalDynamoTable.groovy`, `readDynamoJson.groovy`, `updatePerformance.groovy`, `updateSandbox.groovy` — additional pipeline utilities for test execution and non-ArgoCD deployments.
@@ -149,7 +149,7 @@ The `lib/` directory contains bundled Groovy JAR dependencies (Groovy 5.0.0-alph
 `ddmr-deployments` is an older Helm-values repository that predates the `components` / ApplicationSet pattern. It is still used for a small number of tooling applications (scope-membership-tool, mdm-tool, tenant-migration jobs) that are not yet migrated to the components pattern.
 
 Structure:
-- `argo/apps/` — ArgoCD ApplicationSet YAMLs for the remaining tools. These use a `list` generator (explicit cluster/namespace entries) rather than the `clusters` selector pattern, and point directly at `helm/` subdirectories in this repo as their source. Example: `scope-membership-tool-appset.yaml`, `mdm-tool-appset.yaml`, `tenant-migration-job-appset.yaml`.
+- `argo/apps/` — ArgoCD ApplicationSet YAMLs for the remaining tools. These use a `list` generator (explicit cluster/namespace entries) rather than the `clusters` selector pattern, and point directly at `helm/` subdirectories in this repo as their source. Example: `scope-membership-tool-appset.yaml`, `mdm-tool-appset.yaml`, `tenant-migration-job-appset.yaml`, `tenant-authorizer-appset.yaml`.
 - `helm/` — Helm chart values organized by tool, with per-env value files (`values-all.yaml`, `values-prod.yaml`, `values-stable-dev.yaml`, etc.).
 
 For tools in `ddmr-deployments`, updates flow through `updateStaging.groovy` / `updateProduction.groovy` in `ddmr-jenkins` (writing new image tags directly into these value files) rather than through the GitHub Actions CI release step.

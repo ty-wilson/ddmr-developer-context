@@ -41,13 +41,15 @@ Notable apps in `apps/`:
 | `blueprint-component-configuration-profiles` | `@jmf/blueprint-component-configuration-profiles` | React + Vite | Config Profiles step inside a Blueprint |
 | `blueprint-component-declarations` | `@jmf/blueprint-component-declarations` | React + Vite | Declarations (DDM) step inside a Blueprint |
 | `blueprints-component-declarations` | `@jmf/blueprints-component-declarations` | React | Alternate declarations entry point |
-| `json-schema-form-generator` | `@jmf/json-schema-form-generator` | React + Vue 3 | Renders forms from JSON Schema; loaded dynamically by other MFEs |
+| `json-schema-form-generator` | `@jmf/json-schema-form-generator` | React + Vue 3, json-schema-library | Renders forms from JSON Schema; loaded dynamically by other MFEs. See note below about the standalone repo. |
 | `app-switcher` | `@jmf/app-switcher` | Vue 3 + Vite | Top-level app navigation widget |
 | `compliance-benchmarks` | `@jmf/compliance-benchmarks` | React + Vite | Compliance benchmarks UI |
 | `scoping` | `@jmf/scoping` | React + Vite | Device scoping / group assignment UI |
 | `platform-authorization` | `@jmf/platform-authorization` | React + Vite | API client management in Jamf Account |
-| `angular-shell` / `react-vite-shell` | — | Angular / React | Local development host shells |
-| `demo-{react,vue,angular}-remote` | — | Various | Reference implementations for each framework |
+| `ascent` / `assistant` / `data-streams` | — | — | Additional DDmR-owned production apps |
+| `declaration-reporting-mfe` / `mms-token-management` / `scim-integration` | — | — | Additional DDmR-owned production apps |
+| `angular-shell` / `vue-shell` / `react-vite-shell` | — | Angular / Vue / React | Local development host shells |
+| `demo-{react,vue,vanilla}-remote` | — | Various | Reference implementations for each framework |
 
 There are also many smaller `blueprint-component-*` apps (e.g., `blueprint-component-ddm-passcode`, `blueprint-component-sw-update`) representing individual Blueprint step MFEs.
 
@@ -158,13 +160,12 @@ Fetches the **raw Apple DDM declaration** from `GET /v1/declarative/{schemaVersi
 
 ## json-schema-form-generator (`@jmf/json-schema-form-generator`)
 
-The JSFG is a React + Vue 3 MFE that renders dynamic forms from a JSON Schema. It is loaded as a nested remote by both `blueprint-component-configuration-profiles` and `blueprint-component-declarations` via `FeatureAppLoader`. It uses:
+There are two distinct versions of JSFG:
 
-- `json-schema-library` for schema traversal and validation
-- `@jamf/mfe-json-schema-form-generator-service` for the Feature Hub service interface
-- Nanostores for reactive form state
+- **`apps/json-schema-form-generator`** (in `micro-frontend-hub`): The MFE remote — React + Vue 3, `json-schema-library`, `@jamf/mfe-json-schema-form-generator-service`. Loaded at runtime by other MFEs via `FeatureAppLoader`.
+- **Standalone repo** (`jamf/json-schema-form-generator`): Vue 3-only, `vuelidate`. No React, no `json-schema-library`. A separate project; do not conflate with the MFE above.
 
-Communication with the parent MFE happens exclusively through the `jamf:json_schema_form_generator_service`:
+The in-hub MFE uses nanostores for reactive form state. Communication with the parent happens exclusively through `jamf:json_schema_form_generator_service`:
 - `setJsonSchema(schema)` — pushes a new schema into the form
 - `setPayloadFormValue(value)` / `setInitialPayloadFormValue(value)` — pre-populate or reset form values
 - `getPayloadOutputFormValue()` — retrieve the current form output on save
@@ -181,7 +182,7 @@ Three Spring Boot (Java 21) services back the Blueprints feature. All use M2M OA
 Manages blueprint lifecycle: create, edit, version, deploy, undeploy. Key points:
 
 - **Persistence**: PostgreSQL with Flyway migrations; soft-deletes; versioned via `BlueprintVersion` entities
-- **Deployments**: Async via Pulsar — deploy/undeploy return 202, actual work triggered by `pdd/blueprints/blueprint-deployment-task`
+- **Deployments**: Async via Pulsar — deploy/undeploy return 202, actual work triggered by `pdd/blueprints/blueprint-deployment-task` (consumed by `blueprint-deployment-service`, which is owned by the Ocean team, not DDmR)
 - **Multi-tenancy**: Every query filters by `tenantId` from M2M JWT; `@TenantId` annotation on controllers
 - **JSON Merge Patch** (RFC 7386) for partial blueprint updates, with separate SAVE vs DEPLOY validation profiles
 - **External dependencies**: calls component registry service to resolve components; calls tenant service for org info

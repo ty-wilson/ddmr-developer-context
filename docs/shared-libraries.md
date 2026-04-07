@@ -13,7 +13,7 @@ Java abstraction layer over Apache Pulsar for DDmR services. Split into two publ
 **`platform-messaging-client-java-core`** (`com.jamf.platform.messaging.client:platform-messaging-client-java-core`)
 - Core Pulsar interaction: `PlatformPulsarClientBuilder`, `PlatformProducerBuilder`, `PlatformConsumerBuilder`
 - Authentication providers: `OAuth2AuthenticationProvider`, `TokenizerAuthenticationProvider`, `AuthenticationDisabledProvider`
-- Producer and consumer interceptors: `HeadersProducerInterceptor`, `LoggingInterceptor`
+- Producer and consumer interceptors: `HeadersProducerInterceptor`, `LoggingProducerInterceptor`, `LoggingConsumerInterceptor`
 - Payload encryption via `CryptoKeyServiceClient`
 - OpenTelemetry tracing hooks for producers and consumers
 - Environment configuration (dev, stage, us-prod, local)
@@ -113,7 +113,7 @@ Client for calling the Declaration Storage Service's **MDM API** (used by MDM-fa
 
 **`starter`** (`com.jamf.ddm:declaration-mdm-springboot-starter`)
 - Spring Boot autoconfiguration wrapper
-- Depends on `declaration-client-core` (springboot31 variant, version `8.1.0-springboot31` at time of writing)
+- Depends on `declaration-client-core` (springboot31 variant)
 
 ### Who uses it
 - `declaration-service-component-tests`: `declaration-mdm-springboot-starter` (component test client)
@@ -142,7 +142,7 @@ Gradle plugin that standardizes artifact naming, versioning, ECR image tagging, 
 - Local: `LOCAL` (or `LOCAL.<epoch>`)
 - Used for services where every build gets a unique version
 
-**SNAPSHOT support**: setting `INCLUDE_SNAPSHOT_LITERAL` appends `-SNAPSHOT` to branch builds only (not MAIN).
+**SNAPSHOT support**: setting `INCLUDE_SNAPSHOT_LITERAL` appends `-SNAPSHOT` at the end of the full version string for branch builds only (not MAIN), after any `+branch.buildnum` suffix — e.g., `1.2.3+DDM-3.8-SNAPSHOT`.
 
 ### Artifact configuration
 
@@ -160,7 +160,7 @@ Gradle plugin that standardizes artifact naming, versioning, ECR image tagging, 
 - MAIN → `359585083818.dkr.ecr.us-east-1.amazonaws.com/jamf/ga`
 - Branch → `359585083818.dkr.ecr.us-east-1.amazonaws.com/jamf/test`
 
-**`containerImage.buildTargetTag()`** — Tag format: `<branch>.<date>.<per-day-count>` (e.g., `MAIN.2023-03-28.1`). Supports `IMAGE_RELEASE_CANDIDATE=true` (produces `RC.*`) and `IMAGE_TAG_OVERRIDE`.
+**`containerImage.buildTargetTag()`** — Tag format: `<branch>.<date>.<per-day-count>` (e.g., `MAIN.2023-03-28.1`). `IMAGE_RELEASE_CANDIDATE=true` replaces the branch segment with `RC`, producing the same `RC.<date>.<count>` pattern (e.g., `RC.2023-03-28.1`). Also supports `IMAGE_TAG_OVERRIDE`. When `BUILDS_TODAY` is unavailable the count falls back to seconds since midnight rather than a build counter.
 
 **ECR auth helpers**: `containerImage.cacheEcrAuthorization()` / `cachedEcrUsername()` / `cachedEcrPassword()` — fetch and cache ECR tokens via the AWS SDK. No-op for LOCAL builds by default.
 

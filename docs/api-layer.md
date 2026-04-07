@@ -70,13 +70,13 @@ Each ApiDefinition specifies:
 
 ## DDmR Service Route Mapping
 
-The table below covers DDmR services that have Tyk products. Listen paths are what external callers use; the gateway strips the prefix before forwarding.
+Listen paths are what external callers use; the gateway strips the prefix before forwarding.
 
 | Tyk Product | Listen Path | Upstream Service (prod) | Internal / External |
 |---|---|---|---|
-| `scope-eng` | `/scoping` | `scoping-engine-svc.ddmr-<env>:7070` | Both |
+| `scope-eng` | `/scoping` (prod, stage→integration); `/scope-eng-prerelease` (stage→ddmr-stage) | `scoping-engine-svc.ddmr-<env>:7070` | Both |
 | `dss` | `/dss` | `declaration-storage-svc.ddmr-<env>:7070` | Both |
-| `declaration-service` | `/declaration-service` | `declaration-service.ddmr-<env>:7070` | Both |
+| `declaration-service` | `/declaration-service` | `declaration-service.ddmr-<env>:7070` (internal); `declaration-service-svc.ddmr-<env>:7070` (external) | Both |
 | `app-declaration-service` | `/app-declaration-service` | `bcads.use2.platform.jamfapps.io` | Internal |
 | `declaration-reporting-service` | `/ddm/report` | `drs.use2.platform.jamfapps.io` | Internal |
 | `blueprint-management` | `/blueprints/management` | `blueprint-management-service.ocean-prod:8080` | Both |
@@ -86,9 +86,7 @@ The table below covers DDmR services that have Tyk products. Listen paths are wh
 | `mdm-protocol-handler` | `/mdm-protocol-handler` | `mdm-protocol-handler.use2.platform.jamfapps.io` | Internal |
 | `school-declaration-scoping` | `/school-scoping` | `school-declaration-scoping-service.ocean-prod:8080` | Internal |
 
-Services running as in-cluster pods (scoping-engine, declaration-storage-service, declaration-service) use Kubernetes DNS names. Services that live outside the cluster (e.g., device-inventory, CPS) are referenced by their platform hostname.
-
-The `scope-eng` product does not appear in `prod/api-products/` — scoping-engine has no direct Tyk product in prod under that name. It is present in `hc-stage` and `dev/stage` as `scope-eng`.
+Services running as in-cluster pods (scoping-engine, declaration-storage-service, declaration-service) use Kubernetes DNS names. Services that live outside the cluster (e.g., device-inventory, CPS) are referenced by their platform hostname. In stage, `scope-eng` exposes two listen paths: `/scope-eng-prerelease` targets `ddmr-stage` (the latest prerelease build) and `/scoping` targets `ddmr-integration`.
 
 ---
 
@@ -121,9 +119,7 @@ The external Tyk product for scoping-engine exposes a whitelist of routes (`/api
 
 Every request to a DDmR service must carry an `X-TenantId` header. The JWT sidecar injects this from the verified JWT before it reaches the application. If the header is absent, `AbstractApiRequest` throws `ResponseStatusException(401, "No tenant identifier")`.
 
-`X-EnvironmentId` is optional and treated as a tenant-scoped environment discriminator. If absent, it resolves to `null` and most handlers proceed without filtering by environment.
-
-Neither header is set by API clients directly. They are injected by the authentication infrastructure.
+`X-EnvironmentId` is optional and treated as a tenant-scoped environment discriminator. If absent, it resolves to `null` and most handlers proceed without filtering by environment. Neither header is set by API clients — both are injected by the authentication infrastructure.
 
 ### Request Serialization
 
@@ -157,32 +153,17 @@ Actuator endpoints (`/actuator`, `/actuator-jwt`) are blacklisted at the Tyk lay
 
 ## Service-to-Service HTTP Calls
 
-DDmR services make synchronous HTTP calls to other services for real-time data. All outbound calls use an M2M Bearer token (see M2M Auth section below).
+**Scoping Engine → DSS**: Uses the `DeclarationAssignments` starter client (`declaration-product-springboot-starter`) configured via `declaration.client.host`. In production this resolves to `https://us.int.apigw.jamf.com/dss`.
 
-### Scoping Engine Outbound Calls
+**Scoping Engine → VPP App Service**: `VppAppClient` calls `POST /v1/components/app-service/assignment/device/{device}/{channel}` when a device sync triggers app assignment. Requires `vpp-app.client.host` to be configured; skips silently if absent.
 
-**Declaration Storage Service (`dss`)**: Scoping-engine calls DSS via the `DeclarationAssignments` Spring Boot starter client (`declaration-product-springboot-starter`). The client is configured via `declaration.client.host`, which points to the DSS gateway URL. Example (local dev targeting stage): `https://us.int.stage.apigw.jamfnebula.com/dss`. In production the host resolves to `https://us.int.apigw.jamf.com/dss`.
-
-**VPP App Service**: Scoping-engine calls a Deployable VPP service at `vpp-app.client.host` to push app assignments when a device sync is triggered. The `VppAppClient` hits `POST /v1/components/app-service/assignment/device/{device}/{channel}` with an M2M Bearer token. This client is conditional — if no `vpp-app.client.host` is configured the client logs an error and skips the call rather than failing.
-
-### Other Known Inter-Service Calls
-
-- **Blueprint Management Service** calls Declaration Storage Service for declaration retrieval.
-- **Declaration Reporting Service** calls Declaration Storage Service for device/declaration data.
-- **App Declaration Service** calls DSS for declaration content.
+**Other**: Blueprint Management, Declaration Reporting Service, and App Declaration Service all call DSS for declaration content or device data.
 
 ---
 
 ## M2M Auth for Outbound Calls
 
-All service-to-service calls use M2M tokens fetched via the `robocop` library (`com.jamf.stratus.m2m.robocop`). The token is scoped to a specific tenant UUID and a set of service scopes. In scoping-engine:
-
-- `M2MService.getRestToken(tenantId, credentials)` fetches a token for a given tenant.
-- Credentials (client ID and secret) are loaded from AWS Secrets Manager.
-- The `m2m.env` config property selects the Robocop environment: `DEV`, `STAGE`, `PROD_US`, `PROD_EU`, or `PROD_AP`.
-- A `m2m.customEnv.url` override allows pointing at an arbitrary M2M endpoint (used in HC and perf environments).
-
-Tenant must be a valid UUID; if not, `M2MTokenAcquisitionException(retryable=false)` is thrown before Robocop is called. See `auth-and-tenancy.md` for a full description of M2M auth and the JWT sidecar.
+M2M tokens are fetched via the `robocop` library (`com.jamf.stratus.m2m.robocop`). `M2MService.getRestToken(tenantId, credentials)` fetches a per-tenant token; credentials come from AWS Secrets Manager. `m2m.env` selects the Robocop environment (`DEV`, `STAGE`, `PROD_US`, `PROD_EU`, `PROD_AP`); `m2m.customEnv.url` overrides the endpoint for HC and perf environments. Tenant must be a valid UUID — `M2MTokenAcquisitionException(retryable=false)` is thrown otherwise. See `auth-and-tenancy.md` for the full JWT sidecar description.
 
 ---
 
@@ -198,15 +179,13 @@ Tenant must be a valid UUID; if not, `M2MTokenAcquisitionException(retryable=fal
 | Prod EU | `https://eu.int.apigw.jamf.com` | `https://eu.int.apigw.jamf.com` |
 | Prod APAC | `https://apac.int.apigw.jamf.com` | `https://apac.int.apigw.jamf.com` |
 
-The legacy `apigw.jamfnebula.com` hostname (`tyk-gateway.stage.apigw.jamfnebula.com`) appears in older performance test scripts but is superseded by the `platform.jamflabs.io` and `apigw.jamf.com` patterns above.
-
 ### HC (Healthcare / StateRAMP)
 
 | Environment | Internal Gateway Base URL |
 |---|---|
 | HC Stage | `https://us1.stage.platform-hc.jamflabs.io` |
 
-HC stage is a fully isolated AWS deployment (`604006981984`). It uses the same Tyk CRDs as `hc-stage/` in the gateway management repo but points to cluster-internal service DNS names within `ddmr-stage` namespace. The M2M JWKS endpoint and Pulsar broker also resolve to `platform-hc.jamflabs.io` hostnames.
+HC stage is a fully isolated AWS deployment (`604006981984`) using `hc-stage/` CRDs. Service DNS names resolve within the `ddmr-stage` namespace; M2M JWKS and Pulsar broker use `platform-hc.jamflabs.io` hostnames.
 
 ---
 

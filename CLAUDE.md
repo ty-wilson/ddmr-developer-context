@@ -23,7 +23,7 @@
 
 ### MDM Schema
 - **mdm-schema-ingest-inbound-adapter** — Hourly Lambda: ingests Apple DDM repo → transforms → S3.
-- **mdm-schema-ingest-infrastructure** — CDK infra for the schema pipeline (ALB, Lambdas, S3, EventBridge).
+- **mdm-schema-ingest-infrastructure** — Terraform/Terragrunt infra for the schema pipeline (ALB, Lambdas, S3, EventBridge).
 - **mdm-ui-schema** — UI-specific schema customizations.
 
 ### Auth & Tenancy
@@ -51,16 +51,19 @@
 - **ddmr-deployments** — Legacy ApplicationSets for tooling (scope-membership-tool, tenant-migration).
 - **ddmr-jenkins** — Groovy shared library for older Jenkins pipelines.
 
-### Cross-Team Dependencies (cloned locally, not DDmR-owned)
+### Cross-Team Services (not DDmR-owned, but interact with DDmR via events or HTTP)
 - **app-lifecycle-management-engine-client** — Client lib for VPP/app lifecycle service; called by scoping-engine for app assignments.
-- **blueprint-report-aggregation-service** — Consumes device-scope-membership-changed and device-management-channel-changed events. Owned by DDmR-adjacent team.
-- **compliance-benchmark-report-service** — Consumes device-group-changed events. Owned by Compliance Benchmarks team.
-- **spaghetti-mux** — Pulsar event relay/mux (enterprise-messaging system). Consumes declaration-assignment-changed. Owned by Pulsaroni team.
-- **m2m-robocop** — M2M authentication library used by all DDmR services for service-to-service auth.
-- **jamf-school-helm-apns** — Jamf School APNS Helm config. Consumes declaration-assignment-changed.
-
-### Not Cloned
-- **Jamf Pro Server (jss)** — The monolith. Produces platform events DDmR consumes (device-group-changed, device-management-channel-changed). Cloned locally at `~/Projects/DDmR/jss/` if available.
+- **blueprint-report-aggregation-service** (Ocean) — Consumes device-scope-membership-changed, device-management-channel-changed, apple-ddm/statusreport.
+- **blueprint-deployment-service** (Ocean) — Produces blueprint-deployment-task, blueprint-deployment-changed. Handles async blueprint deploys.
+- **compliance-benchmark-report-service** (Mars/Red) — Consumes device-group-changed, device-*-changed, device-management-state.
+- **compliance-benchmark-engine** (Red) — Produces verified-rules topic.
+- **spaghetti-mux** (Pulsaroni) — Pulsar event relay. Consumes declaration-assignment-changed and SCIM events.
+- **m2m-robocop** — M2M authentication library used by all DDmR services.
+- **jamf-school-helm-apns** (Pixels) — Consumes declaration-assignment-changed.
+- **Jamf Pro Server / jamf-messaging** — Produces platform events: device-group-changed, device-management-channel-changed, device-*-state events.
+- **device-identity-mapping-service** (Team Rocket) — Consumes device-identity-certificate-issued, device-management-state, enrollment-ca-changed.
+- **scim-directory-service** (Orange) — Produces SCIM events (scim-group-state, scim-user-*).
+- **mms-pigeon** (PowerPC) — Produces 6 apple-media-* topics in pdd/mms/ namespace.
 
 ## Communication
 

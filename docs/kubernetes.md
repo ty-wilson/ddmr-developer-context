@@ -4,7 +4,7 @@ Last reviewed: 2026-04-07
 
 ## Helm Chart Structure
 
-Each DDmR service owns its chart under `helm/<service-name>/`:
+Each DDmR service owns its chart under `helm/<service-name>/`. The listing below reflects scoping-engine; other services may have additional templates (e.g. declaration-storage-service includes an `ingress.yaml` in addition to `ingress-sbox-m2m.yaml`):
 
 ```
 helm/scoping-engine/
@@ -126,6 +126,7 @@ Every service has a `catalog-info.yaml` at the repo root that registers it in Ba
 | `argocd/app-selector` | Links to ArgoCD application (e.g. `app=scoping-engine`) |
 | `grafana/dashboard-selector` | Finds dashboards by tag (e.g. `tags @> 'scoping-engine'`) |
 | `jira/project-key` | Links to Jira project (e.g. `DDMR`) |
+| `jsm/team` | JSM team assignment (e.g. `DDmR`) |
 | `sonarqube.org/project-key` | Links to SonarQube analysis (e.g. `com.jamf.ddm:scoping-engine`) |
 | `reportportal.io/project-name` | ReportPortal project for test results (`jamf_capabilities`) |
 | `reportportal.io/launch-name` | ReportPortal launch name for smoke tests |

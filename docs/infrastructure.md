@@ -20,7 +20,7 @@ This repo owns the canonical table-definition YAML files and IAM policy JSON fil
 - **GitHub Actions** → Highway-to-Prod webhook → Argo for deployment
 - A strict directory hierarchy: `infrastructure/aws/{partition}/{env}/{account_name}_{account_id}/{region}/{resource}/terragrunt.hcl`
 
-Currently `commercial/` contains placeholder/scaffold accounts (dummy account IDs `012345678901`); only the `hc/` partition has real provisioned infrastructure.
+Currently `commercial/` contains two scaffold environments — `sbox` and `stage` — both with placeholder account IDs (`012345678901`); only the `hc/` partition has real provisioned infrastructure.
 
 When working on HC resources, use this repo. For commercial-environment changes (dev/sandbox/staging/production) use `ddmr-terraform`.
 
@@ -54,7 +54,7 @@ Table schemas are defined as YAML files in `grunt/` (ddmr-terraform) and `infras
 
 PITR (point-in-time recovery) is enabled on staging and HC stage tables.
 
-The staging environment also provisions an `ddmr-integration-*` set of tables alongside the main tables to support integration test runs.
+The staging environment also provisions a `ddmr-integration-*` set of tables alongside the main tables to support integration test runs. These include at minimum: `ddmr-integration-declaration-storage`, `ddmr-integration-scoping-engine`, and `ddmr-integration-tenant-authorizer`.
 
 ### S3 Buckets
 
@@ -81,7 +81,7 @@ Services with IAM roles in HC stage (ddmr-infrastructure):
 
 ### IAM Policies
 
-Each service has a corresponding policy granting it access to its own DynamoDB table and Secrets Manager secrets. Policy JSON templates live in `grunt/` as `{service}-serviceaccount-policy.json`. Example permissions for scoping-engine:
+Each service has a corresponding policy granting it access to its own DynamoDB table and Secrets Manager secrets. Policy JSON templates live in `grunt/` as `{service}-serviceaccount-policy.json`. Note that `declaration-service` is an exception to this naming pattern — its file is `declaration-serviceaccount-policy.json` (no `-service` before `-serviceaccount`). Example permissions for scoping-engine:
 - DynamoDB: `BatchGetItem`, `BatchWriteItem`, `ConditionCheckItem`, `PutItem`, `DescribeTable`, `DeleteItem`, `GetItem`, `Scan`, `Query`, `UpdateItem`
 - Secrets Manager: `GetSecretValue` (scoped to `arn:aws:secretsmanager:*:{account}:secret:ddmr/{env}/scoping/*`)
 
@@ -111,7 +111,7 @@ The pattern is `system:serviceaccount:{k8s-namespace}:{service}-acct`. The names
 
 ## mdm-schema-ingest-infrastructure
 
-`github.com/jamf/mdm-schema-ingest-infrastructure` is a **separate CDK-style Terragrunt repo** owned by the Goldminers team (Jira: GOLD) that manages the MDM schema ingestion pipeline. It is not part of the DDmR service infrastructure but DDmR services consume the schema endpoint it exposes.
+`github.com/jamf/mdm-schema-ingest-infrastructure` is a **separate Terraform/Terragrunt repo** owned by the Goldminers team (Jira: GOLD) that manages the MDM schema ingestion pipeline. It is not part of the DDmR service infrastructure but DDmR services consume the schema endpoint it exposes.
 
 The pipeline is entirely serverless and EventBridge-orchestrated:
 1. A scheduled Lambda (`mdm-git-ingest`) clones Apple MDM schema repos using EFS-mounted storage.

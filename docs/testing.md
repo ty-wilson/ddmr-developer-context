@@ -45,7 +45,7 @@ Each service's component-test repo defines a custom JUnit `TestInstancePostProce
 2. Resolves credentials — from config properties directly, or from AWS Secrets Manager using a named AWS profile.
 3. Optionally starts Pulsar, DynamoDB local, and the service itself as Testcontainers (controlled by `scoping-engine.host=container`). When not using containers, the extension connects to an already-running instance (dev, stage).
 4. Creates Pulsar producers/consumers that tests can use to inject or observe events.
-5. Injects values into test-class fields via custom annotations: `@ScopingEngineClient`, `@ScopingEngineUri`, `@TestPulsarGroupChangeProducer`, `@TestPulsarChannelChangeProducer`, `@DssCreds`, `@BrokerCreds`, `@M2MEnvironment`, etc.
+5. Injects values into test-class fields via custom annotations: `@ScopingEngineClient`, `@ScopingEngineUri`, `@TestPulsarGroupChangeProducer`, `@TestPulsarChannelChangeProducer`, `@DssCreds`, `@BrokerCreds`, `@M2MEnvironment`, `@CryptoCreds`, `@TestPulsarClient`, `@TestPulsarConsumerBuilder`, etc.
 
 ### Test Class Structure
 
@@ -112,15 +112,15 @@ config:
       name: Warm up phase
     - duration: 120
       arrivalRate: 1
-      rampTo: 200
+      rampTo: <service-specific>
       name: Ramp up load
     - duration: 120
-      arrivalRate: 200
+      arrivalRate: <service-specific>
       name: Maintain
   plugins:
     ensure:
       thresholds:
-        - http.response_time.p99: 1000
+        - http.response_time.p99: <service-specific>
       maxErrorRate: 1
     expect:
       reportFailuresAsErrors: true
@@ -128,13 +128,15 @@ config:
 
 The `before` block acquires an M2M Bearer token and sets up any prerequisite state (e.g. creating a scope). Credentials are loaded from `config/credentials.yml` (gitignored).
 
+`rampTo`, steady-state `arrivalRate`, and p99 thresholds differ per service — see the service-specific sections below.
+
 ### Scoping Engine Tests
 
-Tests are named `<resource>-spike-<METHOD>-<groupCount>.yml`. The `groupCount` suffix (1 or 10) indicates payload size. Scenarios loop a single operation once (`count: 1`) to simulate realistic per-request load. The p99 threshold is 1000 ms.
+Tests are named `<resource>-spike-<METHOD>-<groupCount>.yml`. The `groupCount` suffix (1 or 10) indicates payload size. Scenarios loop a single operation once (`count: 1`) to simulate realistic per-request load. `rampTo` is 200, steady-state `arrivalRate` is 200, and the p99 threshold is 1000 ms.
 
 ### Declaration Storage Service Tests
 
-The DSS performance tests include CSV device fixture files (`100devices.csv`, `1000devices.csv`) for data-driven scenarios. The p99 threshold is 500 ms, reflecting lower expected latency for storage operations.
+The DSS performance tests include CSV device fixture files (`100devices.csv`, `1000devices.csv`) for data-driven scenarios. Test files do not follow the scoping-engine `<resource>-spike-<METHOD>-<groupCount>.yml` naming pattern; DSS files use their own conventions. `rampTo` is 100. The standard p99 threshold is 1000 ms (59 of 64 test files); 5 files use 500 ms, and some large-payload tests use 3000 ms.
 
 ## Contract Tests
 
@@ -180,6 +182,8 @@ Provider tests use `@Provider`, `@PactBroker`, and `@ExtendWith(PactVerification
 @Provider("scoping-engine")
 @PactBroker
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
+@ContextConfiguration(classes = [TestSpringContextBase::class])
+@ActiveProfiles("contract-test")
 @ExtendWith(PactDynamoLifecycleExtension::class)
 class ScopingEngineProviderPactTest {
 

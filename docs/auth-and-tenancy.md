@@ -19,7 +19,7 @@ The filter (`JwtProxyFilter`) processes every incoming request:
 1. Actuator requests (`/actuator-jwt/...`) are passed directly to Micronaut's own handlers.
 2. Requests matching the configured `open` endpoint list are proxied without authentication, but any proxy headers that would normally be set are stripped from the request first to prevent spoofing.
 3. All other requests must carry a `Bearer` token in the `Authorization` header. The token is parsed, its issuer is looked up in `JwtProxySignatures`, and the signature is verified via JWKS. If the issuer is not in the configured map the request is rejected with 401.
-4. The `scope` claim on the token is checked against a configured regex. For M2M tokens scoping-engine uses `scope: "*"` (any scope allowed). For CSA tokens it requires `scope: "all-basic-cloud-services"`.
+4. The `scope` claim on the token is checked against a configured value. When scope is configured as `"*"` the check is bypassed entirely and the request is allowed regardless of the token's scope claim — no regex is applied. For CSA tokens scoping-engine requires `scope: "all-basic-cloud-services"`.
 5. JWT claims are extracted into HTTP headers per the `proxy.headers` configuration. The transformation supports three modes: `REQUIRED` (401 if claim absent), `OPTIONAL` (strip the header if claim absent), and `BOOLEAN` (sets `true`/`false` based on claim presence).
 6. The mutated request (with injected headers and rewritten URI) is forwarded to `localhost:8080`.
 
@@ -40,7 +40,7 @@ Current image tag in scoping-engine `values.yaml`: `MAIN.2026-03-20.62054` from 
 Different `.toml` environment profiles bake the correct JWKS URLs into the image:
 - `application-stage.toml` — `us1.api.stage.platform.jamflabs.io`
 - `application-prod-use1.toml` — `us.int.apigw.jamf.com`
-- `application-fi.toml` — Tyk gateway at `us.int.stage.apigw.jamfnebula.com` (with `internalIssuer` override for the `iss` claim)
+- `application-fi.toml` — Tyk gateway at `tyk-gateway.stage.apigw.jamfnebula.com` for `jwksInternal`, with `internalIssuer` override pointing to `us.int.stage.apigw.jamfnebula.com` for the `iss` claim
 
 ### Sidecar Configuration via Helm
 
@@ -77,7 +77,7 @@ Client
   -> API Gateway
      -> ddmr-authorizer-tenant (/authorize)
         * validates CSA JWT (Spring Security OAuth2 resource server)
-        * checks scope: all-basic-cloud-services:allow
+        * checks scope: all-basic-cloud-services:allow (only when rejectRequestInStageHack is enabled)
         * reads sub (organizationId) and x-customer-id header
         * looks up / generates UUID tenant ID in DynamoDB (tenant-authorizer table)
         * responds with X-TenantId and X-Auth-Src headers
@@ -90,6 +90,7 @@ The `ddmr-authorizer-tenant` is a Spring Boot WebFlux service acting as a Lambda
 
 - Validates the CSA JWT via Spring Security's `oauth2ResourceServer().jwt()` with the CSA JWKS URI from S3.
 - Requires `token_use == "access"` on the JWT.
+- When the `rejectRequestInStageHack` feature flag is enabled: temporarily rejects the first request per `(organizationId, customerId)` pair for one hour (simulating a missing `tenant_id` claim), and also checks that the JWT scope matches `all-basic-cloud-services:allow`.
 - Looks up the mapping `ORG#<organizationId>#<instanceId>` in a DynamoDB table (`tenant-authorizer`) keyed by `pk`.
 - If no entry exists and `generateTenantId` is enabled, generates a UUID and writes it with a condition expression to prevent race conditions.
 - If the JWT carries a `tenant_id` claim and it disagrees with the stored record, logs a warning and flags the record for migration (`claimTenantMigration` attribute).
@@ -99,7 +100,7 @@ The `ddmr-authorizer-tenant` is a Spring Boot WebFlux service acting as a Lambda
 
 ## Service-Side Header Extraction (`AbstractApiRequest`)
 
-Every HTTP handler in scoping-engine extends `AbstractApiRequest`, which extracts the two tenant headers in its constructor:
+`AbstractApiRequest` is defined in `ApiRequests.kt`. Every HTTP handler in scoping-engine extends it, and it extracts the two tenant headers in its constructor:
 
 - `X-TenantId` (constant `TENANT_HEADER`): required. If absent or blank, throws `ResponseStatusException(401, "No tenant identifier")`.
 - `X-EnvironmentId` (constant `ENVIRONMENT_HEADER`): optional. Returns `null` if absent or blank.
@@ -116,7 +117,7 @@ When DDmR services call other platform services (e.g., declaration-storage-servi
 
 ```
 M2MService.getRestToken(tenantId, credentials)
-  -> M2MToken.fetch(clientId, clientSecret, tenantId, scopes)
+  -> M2MToken.fetchToken(clientId, clientSecret, scopes, tenantServiceIdentity)
      -> returns Bearer token string
 ```
 

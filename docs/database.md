@@ -1,6 +1,6 @@
 # Database
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-07 (Tyler Wilson)
 
 ## Overview
 
@@ -39,7 +39,7 @@ The `group_key` attribute encodes both tenant and scope state. For scope-group i
 - Find all scopes that contain a given group (filter on scope key prefix)
 - Find all devices that belong to a given group (filter on membership key prefix)
 
-The `tenant_index` is `KEYS_ONLY` and is used for tenant-scoped administrative queries. It does not project non-key attributes.
+The `tenant_index` is `KEYS_ONLY` and is defined in Terraform, but no service code currently queries it — it likely exists for operational or tooling queries.
 
 ### declaration-storage-service
 
@@ -57,7 +57,7 @@ Key patterns:
 |------|-------|-------------|
 | `DECL#<id>` | `PAYLOAD` | Declaration payload (type, JSON/encrypted content, payload token) |
 | `MDM#<tenant>\|<deviceId>\|<channel>` | `A#<identifier>` | Declaration assignment for a device+channel+identifier. Sets `declaration_key = DECL#<id>`. |
-| `MIGRATION` | `#FROM#<tenantId>` | In-progress tenant migration marker |
+| `MIGRATION` | `#FROM#<tenantId>#TO#<uuid>` | In-progress tenant migration marker |
 
 The `declaration_index` GSI is used to find all assignments for a given declaration (e.g., when deleting a declaration, all its assignments are removed first). Because projection is `ALL`, the full assignment item is available from the index without a second read.
 
@@ -78,7 +78,7 @@ This table does not follow the `pkey`/`psort` convention — it uses `pk` as the
 
 Services own their own tables and do not cross-read. For example:
 
-- Scoping engine stores declaration identifiers (`DECL#<id>`) as foreign references in scope items, but it calls declaration-storage-service over HTTP (via `DeclarationStorageWrapper`) to resolve payloads rather than querying declaration-storage's table directly.
+- Scoping engine stores declaration identifiers (`DECL#<id>`) as foreign references in scope items, but calls declaration-storage-service over HTTP (via `DeclarationStorageWrapper`) for declaration creation, payload editing, and device assignment — rather than querying declaration-storage's table directly.
 - Declaration-storage-service stores assignment records keyed by device+channel but has no awareness of scoping engine's `SCOPE#` or `MEMBERSHIP#` items.
 
 Communication between services happens via HTTP (synchronous) or Pulsar events (asynchronous). There is no shared DynamoDB table between any two DDmR services.
@@ -90,4 +90,9 @@ Table definitions are in `ddmr-terraform/grunt/`:
 - `declaration-storage-table-definition.yaml`
 - `tenant-authorizer-table-definition.yaml`
 
-IAM policy documents for each service's DynamoDB access are in files named `<service>-serviceaccount-policy.json` in the same directory.
+IAM policy documents for DynamoDB access are also in the same directory:
+- `scoping-engine-serviceaccount-policy.json`
+- `declaration-storage-serviceaccount-policy.json`
+- `declaration-serviceaccount-policy.json`
+- `tenant-authorizer-serviceaccount-policy.json`
+- `tenant-migration-serviceaccount-policy.json`

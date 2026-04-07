@@ -1,6 +1,6 @@
 # Observability
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-07 (updated metrics accuracy)
 
 ## Grafana Dashboards
 
@@ -40,12 +40,12 @@ Spring Boot auto-instruments HTTP handlers. The standard metric is `http_server_
 
 ### Event Processing Metrics
 
-Each Pulsar event handler defines a companion metrics class (e.g., `DeviceGroupChangedMetrics`, `DeviceSyncMetrics`) that records:
+Each Pulsar event handler has a dedicated top-level metrics class (`DeviceGroupChangedMetrics`, `DeviceSyncMetrics`, `DeviceChannelChangedMetrics`, `ApiRequestEventMetrics`) that records:
 
-- **Event age** — time between when the message was published and when processing started, recorded as a `DistributionSummary` histogram. Metric names follow the pattern `<service>.<event-type>.event.age` (e.g., `device.group.event.age`, `device.sync.event.age`).
-- **Handler duration** — total wall-clock time for `processEvent()`, recorded as a `Timer`. Metric names follow the pattern `<service>.<event-type>.event.process.duration` (e.g., `device.group.event.process.duration`, `device.sync.event.process.duration`).
-- **Distribution summaries** — histograms over per-event payload sizes, such as group counts (`device.sync.event.group.distribution`), scope counts (`device.sync.event.scope.distribution`), assignment counts (`device.sync.event.assignment.distribution`), and sync action detail (`device.group.event.sync.detail.distribution`).
-- **Counters** — discrete outcome counts such as `device.sync.event.deployable.type.skipped.count`.
+- **Event age** — time between when the message was published and when processing started, recorded as a `DistributionSummary` histogram. Metric names follow the pattern `<service>.<event-type>.event.age` (e.g., `device.group.event.age`, `device.sync.event.age`, `device.channel.event.age`, `api.request.event.age`).
+- **Handler duration** — total wall-clock time for `processEvent()`, recorded as a `Timer`. Metric names follow the pattern `<service>.<event-type>.event.process.duration` (e.g., `device.group.event.process.duration`, `device.sync.event.process.duration`, `device.channel.event.process.duration`).
+- **Distribution summaries** — histograms over per-event payload sizes, such as group counts (`device.sync.event.group.distribution`), scope counts (`device.sync.event.scope.distribution`), assignment counts (`device.sync.event.assignment.distribution`), sync request detail (`device.group.event.sync.request.distribution`), and sync action detail (`device.group.event.sync.detail.distribution`).
+- **Counters** — discrete outcome counts such as `device.sync.event.deployable.type.skipped.count` and `device.sync.event.deployable.type.sync.count` (tagged with `type` and `result`).
 
 All histograms are registered with `publishPercentileHistogram()` so Prometheus stores bucket data for quantile queries. Timers additionally call `publishPercentiles()`.
 
@@ -69,7 +69,7 @@ Standard JVM metrics (`jvm_memory_used_bytes`, `process_cpu_usage`, `kube_pod_st
 - `trace_id` — from the incoming trace-id header
 - `span_id` — from the incoming span-id header
 
-For Pulsar event handlers, `AbstractEventHandler` propagates the MDC into coroutines via `MDCContext()` and calls `MDCHelper.addTenantId()` from the event payload before any handler logic runs. This ensures that tenant context is present on every log line throughout the lifetime of an event.
+For Pulsar event handlers, `AbstractEventHandler` (in `service/`) propagates the MDC into coroutines via `MDCContext()` and calls `MDCHelper.addTenantId()` from the event payload before any handler logic runs. This ensures that tenant context is present on every log line throughout the lifetime of an event.
 
 ### Log Shipping
 

@@ -6,6 +6,8 @@ Last reviewed: 2026-04-07
 
 DDmR services communicate asynchronously over Apache Pulsar using the `pdd` tenant. All topic definitions are version-controlled in the `event-bus-configuration-topics` repo. The Pulsar broker is shared across the platform, so the `pdd/default/` namespace is considered platform-owned and cannot be changed without broader consultation.
 
+> **Important:** The `owner` field in `topic.json` identifies who owns the *topic definition*, not who produces messages to it. Jamf Pro Server (jamf-messaging) produces `device-group-changed` and `device-management-channel-changed` even though DDmR owns the topic definition entries.
+
 ---
 
 ## Tenant and Namespace Ownership
@@ -23,26 +25,69 @@ DDmR services communicate asynchronously over Apache Pulsar using the `pdd` tena
 
 ## Topic Ownership Table
 
-| Topic (short name)                        | Full path                                                  | Producer                        | Known Consumers                                                       | Schema validation    | Compatibility         |
-|-------------------------------------------|------------------------------------------------------------|---------------------------------|-----------------------------------------------------------------------|----------------------|-----------------------|
-| `device-group-changed`                    | `pdd/default/device-group-changed`                         | Platform Core                   | Scoping Engine, compliance-benchmark-report-service                   | Off                  | FULL                  |
-| `device-management-channel-changed`       | `pdd/default/device-management-channel-changed`            | Platform Core                   | Scoping Engine, blueprint-report-aggregation-service                  | Off                  | FULL                  |
-| `device-scope-membership-changed`         | `pdd/default/device-scope-membership-changed`              | Scoping Engine                  | blueprint-report-aggregation-service                                  | Off                  | FULL                  |
-| `declaration-assignment-changed`          | `pdd/default/declaration-assignment-changed`               | Declaration Storage Service     | jamf-school-apns-service, mux (pro-messaging)                         | Off                  | FULL                  |
-| `blueprint-deployment-changed`            | `pdd/default/blueprint-deployment-changed`                 | blueprint-deployment-service    | blueprint-management-service                                          | On                   | FORWARD_TRANSITIVE    |
-| `device-sync`                             | `pdd/scoping-engine/device-sync`                           | Scoping Engine                  | Scoping Engine (self)                                                 | Off                  | FORWARD_TRANSITIVE    |
-| `api-request`                             | `pdd/scoping-engine/api-request`                           | Scoping Engine                  | Scoping Engine (self)                                                 | Off                  | FORWARD_TRANSITIVE    |
-| `blueprint-component-translation-changed` | `pdd/blueprints/blueprint-component-translation-changed`   | blueprint-management-service    | blueprint-management-service                                          | On                   | FORWARD_TRANSITIVE    |
-| `blueprint-deployment-task`               | `pdd/blueprints/blueprint-deployment-task`                 | blueprint-management-service    | blueprint-deployment-service                                          | On                   | FORWARD_TRANSITIVE    |
-| `statusreport`                            | `pdd/apple-ddm/statusreport`                               | Jamf Pro (ddm-statusreporting)  | blueprint-report-aggregation-service                                  | Off                  | FULL                  |
-| `verified-rules`                          | `pdd/compliance-benchmark/verified-rules`                  | compliance-benchmark-engine     | compliance-benchmark-report-service                                   | On                   | BACKWARD              |
+### pdd/default
+
+| Topic (short name)                        | Producer                        | Known Consumers                                                       | Schema | Compat            |
+|-------------------------------------------|---------------------------------|-----------------------------------------------------------------------|--------|-------------------|
+| `device-group-changed`                    | Jamf Pro Server (jamf-messaging) | Scoping Engine, compliance-benchmark-report-service                  | Off    | FULL              |
+| `device-management-channel-changed`       | Jamf Pro Server (jamf-messaging) | Scoping Engine, blueprint-report-aggregation-service                 | Off    | FULL              |
+| `device-scope-membership-changed`         | Scoping Engine                  | blueprint-report-aggregation-service                                  | Off    | FULL              |
+| `declaration-assignment-changed`          | Declaration Storage Service     | jamf-school-apns-service, mux (pro-messaging)                         | Off    | FULL              |
+| `blueprint-deployment-changed`            | blueprint-deployment-service    | blueprint-management-service                                          | On     | FORWARD_TRANSITIVE |
+| `device-devicename-changed`               | Jamf Pro Server (jamf-messaging) | compliance-benchmark-report-service                                  | On     | FORWARD           |
+| `device-extensionattribute-state`         | Jamf Pro Server (jamf-messaging) | compliance-benchmark-report-service                                  | On     | FORWARD           |
+| `device-identity-certificate-issued`      | Jamf Pro Server (jamf-messaging) | device-identity-mapping-service                                      | On     | FORWARD           |
+| `device-management-state`                 | Jamf Pro Server (jamf-messaging) | compliance-benchmark-report-service, device-identity-mapping-service | On     | FORWARD           |
+| `device-operatingsystem-changed`          | Jamf Pro Server (jamf-messaging) | compliance-benchmark-report-service                                  | On     | FORWARD           |
+| `enrollment-ca-changed`                   | Jamf Pro Server (jamf-messaging) | device-identity-mapping-service                                      | On     | FORWARD           |
+| `scim-group-state`                        | scim-directory-service          | mux (pro-messaging)                                                   | Off    | FULL              |
+| `scim-user-membership-changed`            | scim-directory-service          | mux (pro-messaging)                                                   | Off    | FULL              |
+| `scim-user-state`                         | scim-directory-service          | mux (pro-messaging)                                                   | Off    | FULL              |
+| `scim-user-username-changed`              | scim-directory-service          | mux (pro-messaging)                                                   | Off    | FULL              |
+
+### pdd/scoping-engine
+
+| Topic (short name) | Producer       | Known Consumers       | Schema | Compat            |
+|--------------------|----------------|-----------------------|--------|-------------------|
+| `device-sync`      | Scoping Engine | Scoping Engine (self) | Off    | FORWARD_TRANSITIVE |
+| `api-request`      | Scoping Engine | Scoping Engine (self) | Off    | FORWARD_TRANSITIVE |
+
+### pdd/blueprints
+
+| Topic (short name)                        | Producer                     | Known Consumers              | Schema | Compat            |
+|-------------------------------------------|------------------------------|------------------------------|--------|-------------------|
+| `blueprint-deployment-task`               | blueprint-management-service | blueprint-deployment-service | On     | FORWARD_TRANSITIVE |
+| `blueprint-component-translation-changed` | blueprint-management-service | blueprint-management-service | On     | FORWARD_TRANSITIVE |
+
+### pdd/apple-ddm
+
+| Topic (short name) | Producer                       | Known Consumers                       | Schema | Compat |
+|--------------------|--------------------------------|---------------------------------------|--------|--------|
+| `statusreport`     | Jamf Pro (ddm-statusreporting) | blueprint-report-aggregation-service  | Off    | FULL   |
+
+### pdd/mms
+
+| Topic (short name)          | Producer    | Known Consumers | Schema | Compat |
+|-----------------------------|-------------|-----------------|--------|--------|
+| `apple-media-app-changed`   | mms-pigeon  | (none registered) | On   | —      |
+| `apple-media-asset-assignment` | mms-pigeon | (none registered) | On  | —      |
+| `apple-media-asset-changed` | mms-pigeon  | (none registered) | On   | —      |
+| `apple-media-media-changed` | mms-pigeon  | (none registered) | On   | —      |
+| `apple-media-token-state`   | mms-pigeon  | (none registered) | On   | —      |
+| `apple-media-user-state`    | mms-pigeon  | (none registered) | On   | —      |
+
+### pdd/compliance-benchmark
+
+| Topic (short name) | Producer                     | Known Consumers                        | Schema | Compat   |
+|--------------------|------------------------------|----------------------------------------|--------|----------|
+| `verified-rules`   | compliance-benchmark-engine  | compliance-benchmark-report-service    | On     | BACKWARD |
 
 ---
 
 ## Event Flow (Scoping Engine Focus)
 
 ```
-Platform Core
+Jamf Pro Server (jamf-messaging)
   │
   ├─── device-group-changed (pdd/default) ──────────────────────► Scoping Engine
   │                                                                    │
@@ -110,69 +155,20 @@ This means a Pulsar connection outage at boot time will not crash the pod — it
 
 ## Topic Configuration: MessagingTopicProperties
 
-Both Scoping Engine and Declaration Storage Service follow the same `@ConfigurationProperties(prefix = "messaging.topics")` pattern:
-
-```kotlin
-// Scoping Engine defaults
-tenant = "pdd"
-platformNamespace = "default"
-scopingEngineNamespace = "scoping-engine"
-deviceSyncTopicName = "device-sync"
-apiRequestTopicName = "api-request"
-scopeChangeTopicName = "device-scope-membership-changed"
-channelChangeTopicName = "device-management-channel-changed"
-groupChangeTopicName = "device-group-changed"
-subscriptionBase = "scoping-engine"
-topicNameSuffix = ""          // optional per-environment suffix
-```
-
-`EventTopicConfig` assembles `TopicInfo` objects from these properties. The fully-qualified topic name is always:
-
-```
-persistent://<tenant>/<namespace>/<baseShortName>[-<suffix>]
-```
-
-Subscription names follow: `<subscriptionBase>-<shortName>[-<consumerGroupSuffix>]`
-
-The `topicNameSuffix` and `messaging.consumer-group-suffix` properties allow sandboxes and staging environments to use isolated topics and subscriptions without code changes (e.g., `device-sync-sbox`, `scoping-engine-device-sync-sbox`).
+Scoping Engine uses `@ConfigurationProperties(prefix = "messaging.topics")`. Key defaults: `tenant=pdd`, `platformNamespace=default`, `scopingEngineNamespace=scoping-engine`. `EventTopicConfig` assembles fully-qualified names as `persistent://pdd/<namespace>/<baseName>[-<suffix>]`. The `topicNameSuffix` and `messaging.consumer-group-suffix` properties isolate sandbox/staging environments without code changes.
 
 ---
 
 ## event-bus-configuration-topics: Where Topic Definitions Live
 
-Repository: `event-bus-configuration-topics`
-
-Topic definitions live under:
-```
-envs/
-  prod/
-    pdd/
-      <namespace>/
-        <topic-name>/
-          topic.json     # topic settings, properties, subscriptions per region
-          readme.md      # description and owner contact
-```
-
-Each `topic.json` declares:
-- `name` — fully-qualified topic path (`pdd/<namespace>/<topic>`)
-- `settings.schemaEnforceValidation` — whether the broker rejects schema-incompatible messages
-- `settings.schemaCompatibilityStrategy` — e.g., `FULL`, `FORWARD_TRANSITIVE`, `BACKWARD`
-- `properties` — owner, domain, system, component metadata
-- `subscriptions` — per-region subscription registrations (each with owner metadata and optional alert configuration)
-
-### Adding a New Topic
-
-1. Create a directory under `envs/prod/pdd/<namespace>/<topic-name>/`.
-2. Add `topic.json` with name, settings, properties, and subscriptions for each region (`ap-northeast-1`, `eu-central-1`, `us-east-2`).
-3. Add `readme.md` describing purpose and owner Slack channel.
-4. Open a PR — the CI pipeline applies the config to Pulsar via automation.
-5. If the topic belongs to `pdd/default/`, coordinate with all teams that consume the namespace before merging.
+Topic definitions live under `envs/prod/pdd/<namespace>/<topic-name>/topic.json`. Each file declares `name`, `settings` (schema validation + compatibility strategy), `properties` (owner metadata), and `subscriptions` per region. To add a topic: create the directory, add `topic.json` and `readme.md`, open a PR. For `pdd/default/` topics, coordinate with all consuming teams first.
 
 ---
 
 ## Key Rules
 
-- **`pdd/default/` is platform-owned.** Topics in this namespace (`device-group-changed`, `device-management-channel-changed`, `device-scope-membership-changed`, `declaration-assignment-changed`, etc.) are consumed by multiple teams. Schema or topic changes require broader consultation before merging.
+- **`pdd/default/` is platform-owned.** Topics in this namespace are consumed by multiple teams. Schema or topic changes require broader consultation before merging.
 - **`pdd/scoping-engine/` is DDmR-owned.** `device-sync` and `api-request` are internal implementation details of the Scoping Engine and can be changed by the DDmR team without external sign-off.
 - **All SE listeners use `Key_Shared`.** Per-device ordering is guaranteed as long as the message key is `tenantId + deviceId`. Do not change the key strategy without understanding the ordering implications.
 - **Listeners start disabled.** Never rely on Spring's normal `autoStartup` path for SE listeners — `PulsarWatchdog` owns their lifecycle.
+- **Topic definition owner ≠ producer.** The `properties.owner` in `topic.json` reflects who registered the topic definition, not who sends messages to it. Always verify producers by reading actual service code.
