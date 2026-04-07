@@ -34,7 +34,16 @@ This repo contains that shared `CLAUDE.md` plus deeper reference docs. A symlink
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
 - DDmR repos cloned under a shared parent directory (the path doesn't need to be `~/Projects/DDmR/` — any shared parent works, just adjust the commands below)
 
-### Steps
+### Option A: Use the setup skill (recommended)
+
+1. **Clone this repo** next to your other DDmR repos:
+   ```bash
+   git clone git@github.com:jamf/ddmr-developer-context.git
+   ```
+
+2. **Open Claude Code** inside the cloned repo and run `/setup`. The skill will find your DDmR repos, determine the correct parent directory, and create the symlink for you.
+
+### Option B: Manual setup
 
 1. **Clone this repo** next to your other DDmR repos:
    ```bash
@@ -42,24 +51,19 @@ This repo contains that shared `CLAUDE.md` plus deeper reference docs. A symlink
    git clone git@github.com:jamf/ddmr-developer-context.git
    ```
 
-2. **Create the symlink** at the shared parent directory level:
+2. **Create the symlink** at the common parent directory of all your DDmR repos:
    ```bash
    ln -s ~/Projects/DDmR/ddmr-developer-context/CLAUDE.md ~/Projects/DDmR/CLAUDE.md
    ```
 
-3. **Verify it works** — open Claude Code in any DDmR repo and ask "what services are in the DDmR platform?" Claude should answer from the service map without you pointing it at any file.
+   If your repos are somewhere else (e.g., `~/code/jamf/`), adjust both paths:
+   ```bash
+   ln -s ~/code/jamf/ddmr-developer-context/CLAUDE.md ~/code/jamf/CLAUDE.md
+   ```
 
-That's it. No plugins, no config changes, no environment variables.
+### Verify
 
-### If your DDmR repos are in a different directory
-
-Adjust both the clone path and the symlink. The key constraint is: the symlink must be at the **common parent directory** of all your DDmR repos. For example, if your repos are under `~/code/jamf/`:
-
-```bash
-cd ~/code/jamf
-git clone git@github.com:jamf/ddmr-developer-context.git
-ln -s ~/code/jamf/ddmr-developer-context/CLAUDE.md ~/code/jamf/CLAUDE.md
-```
+Open Claude Code in any DDmR repo and ask "what services are in the DDmR platform?" Claude should answer from the service map without you pointing it at any file.
 
 ### Removing the symlink
 
@@ -87,6 +91,15 @@ rm ~/Projects/DDmR/CLAUDE.md   # removes the symlink only, not the file it point
 | [kubernetes.md](docs/kubernetes.md) | Helm charts, values layering, pod topology |
 | [shared-libraries.md](docs/shared-libraries.md) | Messaging client, storage clients, Gradle plugin |
 | [frontend.md](docs/frontend.md) | MFE architecture, schema pipeline, shell integration |
+
+## Keeping Docs Updated
+
+When you discover new or incorrect architectural information while working in any DDmR repo, Claude can update these docs directly. The Layer 0 CLAUDE.md instructs Claude to read the update instructions at `.claude/skills/update-context/SKILL.md` when it detects stale information or when you ask it to update the docs.
+
+The workflow:
+1. You're working in `scoping-engine` and discover the event-layer doc is missing a new consumer
+2. Tell Claude "update the context docs" — it reads the update skill, finds this repo, and edits the relevant doc
+3. You review the change, commit, and PR
 
 ## Contributing
 
