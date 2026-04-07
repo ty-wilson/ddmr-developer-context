@@ -1,31 +1,78 @@
 # DDmR Developer Context
 
-Shared architectural knowledge for the DDmR platform. Designed to be automatically loaded by Claude Code when working in any DDmR repo.
+Shared architectural knowledge for the DDmR platform, designed for both human developers and AI coding assistants (Claude Code).
+
+## How It Works
+
+Claude Code automatically reads `CLAUDE.md` files from the current working directory **and every parent directory** up to the filesystem root. Since all DDmR repos are cloned under a shared parent directory (e.g., `~/Projects/DDmR/`), placing a `CLAUDE.md` at that level means it's loaded into every Claude session in any child repo — `scoping-engine`, `declaration-service`, `micro-frontend-hub`, etc.
+
+This repo contains that shared `CLAUDE.md` plus deeper reference docs. A symlink connects the two:
+
+```
+~/Projects/DDmR/
+├── CLAUDE.md → ddmr-developer-context/CLAUDE.md   ← symlink, auto-loaded every session
+├── ddmr-developer-context/
+│   ├── CLAUDE.md          ← Layer 0: service map (~90 lines, always in context)
+│   ├── README.md
+│   └── docs/              ← Layer 1: deep dives (~100-200 lines each, loaded on demand)
+│       ├── api-layer.md
+│       ├── event-layer.md
+│       └── ...
+├── scoping-engine/        ← your DDmR repos
+├── declaration-service/
+└── ...
+```
+
+**Layer 0** (the symlink target) is concise enough to always be in context without significant cost. It contains a service map and pointers telling Claude when to read the deeper docs.
+
+**Layer 1** docs are only read when Claude determines from the task at hand that it needs more context — e.g., tracing an event flow, debugging a deployment, or understanding a DynamoDB schema.
 
 ## Setup
 
-1. Clone this repo under your DDmR project directory:
+### Prerequisites
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
+- DDmR repos cloned under a shared parent directory (the path doesn't need to be `~/Projects/DDmR/` — any shared parent works, just adjust the commands below)
+
+### Steps
+
+1. **Clone this repo** next to your other DDmR repos:
    ```bash
-   git clone <repo-url> ~/Projects/DDmR/ddmr-developer-context
+   cd ~/Projects/DDmR
+   git clone git@github.com:jamf/ddmr-developer-context.git
    ```
 
-2. Symlink the Layer 0 doc to the DDmR parent directory:
+2. **Create the symlink** at the shared parent directory level:
    ```bash
    ln -s ~/Projects/DDmR/ddmr-developer-context/CLAUDE.md ~/Projects/DDmR/CLAUDE.md
    ```
 
-Claude Code reads `CLAUDE.md` from every parent directory. The symlink ensures the service map is loaded in every DDmR repo session automatically.
+3. **Verify it works** — open Claude Code in any DDmR repo and ask "what services are in the DDmR platform?" Claude should answer from the service map without you pointing it at any file.
+
+That's it. No plugins, no config changes, no environment variables.
+
+### If your DDmR repos are in a different directory
+
+Adjust both the clone path and the symlink. The key constraint is: the symlink must be at the **common parent directory** of all your DDmR repos. For example, if your repos are under `~/code/jamf/`:
+
+```bash
+cd ~/code/jamf
+git clone git@github.com:jamf/ddmr-developer-context.git
+ln -s ~/code/jamf/ddmr-developer-context/CLAUDE.md ~/code/jamf/CLAUDE.md
+```
+
+### Removing the symlink
+
+```bash
+rm ~/Projects/DDmR/CLAUDE.md   # removes the symlink only, not the file it points to
+```
 
 ## Structure
 
-- **CLAUDE.md** — Layer 0: concise service map, always loaded (~60 lines)
+- **CLAUDE.md** — Layer 0: concise service map, always loaded
 - **docs/*.md** — Layer 1: domain deep dives, loaded on demand by Claude when needed
 
-## Contributing
-
-When you discover outdated information while working in a DDmR repo, fix it here via PR. Each doc has a `Last reviewed` date at the top — update it when you verify content is still accurate.
-
-## Layer 1 Docs
+### Layer 1 Docs
 
 | Doc | Domain |
 |-----|--------|
@@ -40,3 +87,10 @@ When you discover outdated information while working in a DDmR repo, fix it here
 | [kubernetes.md](docs/kubernetes.md) | Helm charts, values layering, pod topology |
 | [shared-libraries.md](docs/shared-libraries.md) | Messaging client, storage clients, Gradle plugin |
 | [frontend.md](docs/frontend.md) | MFE architecture, schema pipeline, shell integration |
+
+## Contributing
+
+- When you discover outdated or incorrect information while working, fix it here via PR.
+- Each Layer 1 doc has a `Last reviewed` date at the top — update it when you verify content is still accurate.
+- Keep Layer 0 under 100 lines. If a service needs more than one line, the detail belongs in a Layer 1 doc.
+- Layer 1 docs should stay in the 100-200 line range. If one grows beyond that, consider splitting it.
