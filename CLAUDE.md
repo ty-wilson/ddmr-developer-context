@@ -87,4 +87,6 @@ IMPORTANT: When answering questions about cross-service concerns, do NOT guess o
 - **Micro-frontends, schema pipeline, shell integration** → read `docs/frontend.md`
 - **Internals of a specific service** (data model, API details, design decisions) → read `services/<service-name>.md`
 
+**Accuracy note:** These docs are point-in-time snapshots. For important decisions, verify claims against the actual code — treat these as orientation, not source of truth.
+
 If you discover that information in these docs is outdated or incorrect based on what you observe in the code, flag it to the user. To update the docs, read the instructions at `ddmr-developer-context/.claude/skills/update-context/SKILL.md` (sibling of the repo you're in).
