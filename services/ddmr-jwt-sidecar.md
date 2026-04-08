@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+> **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
+
 **Owner:** DDmR team
 
 The DDmR JWT sidecar is a lightweight Micronaut/Kotlin proxy that runs as a Kubernetes sidecar container in front of any DDmR service. It listens on port 7070, validates every inbound JWT (CSA or M2M), enforces scope-based authorization, extracts claims into HTTP headers, and forwards the mutated request to the main application container on port 8080. The app container never sees the original `Authorization` header logic — it only sees the synthesized claim headers, so it has no JWT-parsing responsibilities of its own.

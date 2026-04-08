@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+> **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
+
 The micro-frontend-hub is the Nx + pnpm monorepo that hosts every MFE app for the Blueprints/DDmR platform. All product UI lives here. MFEs are built as Module Federation remotes and loaded at runtime by a host shell via the Feature Hub pattern, which injects shared services (auth, routing, tenant, etc.) across framework boundaries. The repo ships three host shells (Angular, React/Vite, Vue) and approximately 50+ remote apps and 30+ shared libraries.
 
 ## Monorepo Structure

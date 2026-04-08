@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+> **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
+
 **Owner:** Ocean team
 
 ## Summary

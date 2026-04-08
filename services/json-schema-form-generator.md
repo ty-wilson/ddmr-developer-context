@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-04-07
 
+> **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
+
 ## Summary
 
 JSON Schema Form Generator (JSFG) renders interactive forms driven by a JSON Schema document. Given a schema, an optional `uiSchema` (ordering, disabled states, hidden fields, tags), and a `locales` map, it produces a field-per-property form where non-required properties are gated by a toggle checkbox. Changes are surfaced via a path+value event rather than two-way binding, keeping the form stateless from the caller's perspective. JSFG exists in two distinct forms that share the same conceptual model but are implemented differently and deployed separately.
