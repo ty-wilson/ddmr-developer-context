@@ -120,4 +120,4 @@ All consumers use `Key_Shared` subscription type. The `PulsarWatchdog` starts li
 
 **Platform topics are shared contracts.** Topics in `pdd/default` (`device-scope-membership-changed`, `device-management-channel-changed`, `device-group-changed`) are used across the platform. Schema or topic-name changes require coordination outside this service.
 
-**External service dependencies.** Scoping Engine calls Declaration Storage Service (via `declaration-product-springboot-starter`) to create and update management-properties declarations, and calls a VPP app service via `VppAppClient` using M2M auth. Both must be reachable for group-change events to complete successfully.
+**External service dependencies.** Scoping Engine calls Declaration Storage Service (via `declaration-product-springboot-starter`, wrapped by `DeclarationStorageWrapper`) to create and update management-properties declarations, and calls a VPP app service via `VppAppClient` using M2M auth. Declaration Storage Service must be reachable for group-change events to complete successfully. `VppAppClient` is called during device-sync processing (via `AppSyncAdapter`), not during group-change handling.

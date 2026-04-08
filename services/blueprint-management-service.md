@@ -29,7 +29,9 @@ All routes are under `/v1/blueprints` and require an M2M JWT. Tenant isolation i
 
 A Swagger UI is available at `/swagger-ui/index.html` and an OpenAPI spec at `https://docs.jamf.build/blueprint-management-service/current/openapi.json`.
 
-There is also a Spring Actuator endpoint `POST /actuator/redeployblueprints` that force-redeploys all currently deployed blueprints — used for operational recovery.
+There are also two Spring Actuator endpoints:
+- `POST /actuator/redeployblueprints` — force-redeploys all currently deployed blueprints; used for operational recovery.
+- `DELETE /actuator/blueprints/{id}?undeploy={true|false}` — internal force-delete of a blueprint by ID, bypassing tenant-from-JWT extraction. `undeploy` defaults to `true`.
 
 ---
 
@@ -49,7 +51,7 @@ Flyway manages schema migrations in `src/main/resources/db/migration/`.
 - `id`, `blueprint_id` (FK), `version` (monotonically increasing integer, unique per blueprint), `scope_id`, `created_at`
 
 **`blueprint_step`** — ordered steps within a version. Immutable.
-- `id`, `version_id` (FK), `name`, `order` (integer, unique per version)
+- `id`, `version_id` (FK), `name`, `order` (integer, unique per version — managed by JPA `@OrderColumn` on the parent `BlueprintVersion.steps` collection, not a named field on the entity)
 
 **`component`** — components within a step.
 - `id`, `step_id` (FK), `identifier` (max 100), `configuration` (JSONB), `private_configuration` (encrypted JSONB, added in V13)
@@ -57,7 +59,7 @@ Flyway manages schema migrations in `src/main/resources/db/migration/`.
 **`activation`** — one optional activation rule set per step (JSONB `rules`).
 
 **`blueprint_deployment`** — one row per deploy/undeploy attempt.
-- `id`, `version_id` (FK), `state` (`PENDING` → `DEPLOYING` → `SUCCEEDED` | `FAILED`), `created_at`, `updated_at`
+- `id`, `version_id` (FK), `state` (`PENDING`, `DEPLOYING`, `SUCCEEDED`, `FAILED`), `created_at`, `updated_at`
 
 **`blueprint_deployable_object`** — records of objects that were materialized during a deployment (DSS declarations or VPP apps). Single-table inheritance keyed on `deployable_object_type` (`DSS` or `VPP_APP`).
 
@@ -69,9 +71,12 @@ Flyway manages schema migrations in `src/main/resources/db/migration/`.
 
 ```
 blueprint 1──* blueprint_version 1──* blueprint_step 1──* component
-                              |──* blueprint_deployment 1──* blueprint_deployable_object
-                                                       1──* blueprint_activation_declaration
+         |                    └──* blueprint_deployment
+         |──* blueprint_deployable_object  (also FK'd to blueprint_deployment)
+         └──* blueprint_activation_declaration  (also FK'd to blueprint_deployment)
 ```
+
+Both `blueprint_deployable_object` and `blueprint_activation_declaration` carry direct FKs to `blueprint` as well as to `blueprint_deployment`.
 
 ---
 
@@ -114,13 +119,13 @@ Both listeners use `Key_Shared` subscription and have DLQ policies configured in
 
 **Versioning is append-only.** `BlueprintVersion` and `BlueprintStep` are annotated `@Immutable`. A new version row is only created when `scope_id` or step structure changes — metadata-only edits (name, description) do not bump the version. The `deployedVersion` FK on `blueprint` always points to the version that was last deployed, not necessarily the latest.
 
-**Async deploys.** `POST /deploy` and `POST /undeploy` return `202 Accepted` immediately. The actual work happens in a separate service listening on `blueprint-deployment-task`. BMS transitions the `BlueprintDeployment.state` from `PENDING` to a terminal state only when it receives a `blueprint-deployment-changed` event back. Do not assume a `202` means the blueprint is deployed — poll `GET /deployments/latest` and check `state`.
+**Async deploys.** `POST /deploy` and `POST /undeploy` return `202 Accepted` immediately. The actual work happens in a separate service listening on `blueprint-deployment-task`. BMS creates the `BlueprintDeployment` row in state `PENDING` and transitions it to `SUCCEEDED` or `FAILED` when it receives a `blueprint-deployment-changed` event back. (`DEPLOYING` is a valid enum value but BMS never sets it — it is used by the downstream executor.) Do not assume a `202` means the blueprint is deployed — poll `GET /deployments/latest` and check `state`.
 
 **Two validation profiles.** `SAVE` allows partial blueprints (components without fully valid configurations). `DEPLOY` enforces stricter rules — blueprints must be fully valid to deploy. Both PATCH and POST accept a `?validation-profile=` param, so clients can stage incomplete blueprints and validate strictly at deploy time.
 
 **JSON Merge Patch.** PATCH uses RFC 7386 semantics. Setting a field to `null` in the patch removes it. Partial step updates follow merge-patch rules, not array-position-preserving upserts. Be precise when patching step arrays.
 
-**Component configuration transformation and private config.** At save time, component configurations are validated against the Component Registry's schema. If a component returns sensitive fields, they are split into `private_configuration` (encrypted at rest via `SensitiveConfigurationConverter`) and the sanitized `configuration`. Private configuration is carried forward across version bumps positionally (by step/component index, falling back to identifier match). The private config is included in the `blueprint-deployment-task` payload so the executor has it during deployment.
+**Component configuration transformation and private config.** At save time, component configurations are validated against the Component Registry's schema. If a component returns sensitive fields, they are split into `private_configuration` (encrypted at rest via `SensitiveConfigurationConverter`) and the sanitized `configuration`. Private configuration is carried forward across version bumps using a three-tier lookup: (1) exact positional match (same step index and component index with matching identifier), (2) identifier match within the same step, (3) identifier match across all steps. The first match found wins. The private config is included in the `blueprint-deployment-task` payload so the executor has it during deployment.
 
 **`OriginSystemType` (BMS vs BDS).** Deployable objects and activation declarations carry an `origin_system_type` field (`BMS` or `BDS`). This is being populated as a migration from an older system and is marked TODO as required after migration completes. Do not rely on it always being non-null in older records.
 

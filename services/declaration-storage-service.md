@@ -22,7 +22,7 @@ These are the current non-deprecated endpoints. Prefer v2 over v1.
 |--------|------|-------------|
 | `POST` | `/api/v2/declaration` | Create a declaration. Returns `{id, serverToken}` with `201 Created`. Accepts `channelReplacement` field (a placeholder string replaced with the actual channel at device fetch time). |
 | `GET` | `/api/v2/declaration/{id}` | Retrieve a declaration. Returns `{type, group, payload, serverToken, channelReplacement?}`. `204` if not found, `401` if wrong tenant. |
-| `PATCH` | `/api/v2/declaration/{id}` | Update one or more fields. At least one field must be set. Returns `{serverToken}` (updated or unchanged). If payload/type changes, emits assignment-changed events for all currently assigned devices. Set `channelReplacement` to explicit null to remove it. |
+| `PATCH` | `/api/v2/declaration/{id}` | Update one or more fields. At least one field must be set. Returns `{serverToken}` (updated or unchanged). If payload, type, or channelReplacement changes, emits assignment-changed events for all currently assigned devices. Set `channelReplacement` to explicit null to remove it. |
 
 ### v2 — Assignment Administration (`/api/v2/assignment`)
 
@@ -65,11 +65,10 @@ Single-table design. Table name is configured per environment. Primary key: `pke
 
 **GSIs:**
 - `declaration_index` (hash: `declaration_key`, projection: ALL) — enables querying all assignments for a given declaration without a full scan
-- `tenant_index` (hash: `tenant`, projection: KEYS_ONLY) — tenant-level key lookup
 
 **Payload storage format:** Payloads are always stored with a prefix: `json:` for plaintext, `iron:` for IronCore (BYOK) encrypted. Always strip the prefix before using the value. Encrypted payloads have a companion `payloadEdek` attribute (the encrypted data encryption key).
 
-**`payloadToken`:** A SHA-256 hex digest over `(payload + type)`. Apple devices compare this token to detect whether a declaration has changed. It is recomputed on any update that changes `payload` or `type`.
+**`payloadToken`:** A SHA-256 hex digest over `(payload + type)`. Apple devices compare this token to detect whether a declaration has changed. It is recomputed on any update that changes `payload`, `type`, or `channelReplacement`.
 
 ---
 
@@ -110,14 +109,14 @@ client.addDeclaration()
     .withGroup(DeclarationGroup.CONFIGURATION)
     .withType("com.apple.configuration.legacy")
     .withPayload("{...}")
-    .execute()  // returns Mono<DeclarationCreatedResult>
+    .result()  // returns Mono<DeclarationCreatedResult>
 ```
 
 Available operations: `addDeclaration()`, `getDeclaration()`, `editDeclaration()`, `removeDeclaration()`, `assignDeclaration()`, `assignDeviceDeclarations()`, `removeDeviceAssignments()`, `getDeclarationAssignments()`, `getDeviceAssignments()`.
 
 Auth modes: CSA (`DeclarationClientCsaAuth`), M2M (`DeclarationClientM2mAuth`), or a custom `DeclarationClientAuth` implementation.
 
-Note: The client library wraps v1 endpoints. If you need v2-only features (e.g., `channelReplacement`, v2 assignment tagging queries), you will need to call the v2 API directly until the client is updated.
+Note: Most operations in the client target v2 endpoints. Two exceptions: `removeDeclaration()` calls `DELETE /api/v1/declaration/{id}` and `assignDeclaration()` calls `POST /api/v1/assignment/declaration/{id}`. The `channelReplacement` field is not exposed through the DSL — if you need to set or update `channelReplacement` you must call the v2 API directly.
 
 ---
 
