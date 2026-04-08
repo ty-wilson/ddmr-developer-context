@@ -52,7 +52,7 @@ These are Spring Boot Actuator `@WebEndpoint` / `@Endpoint` operations, exposed 
 |---|---|---|
 | `POST` | `/actuator/globalfragments` | Triggers a full re-sync of global fragments for all components from their backing services. |
 | `POST` | `/actuator/limitedfragments` | Triggers a full re-sync of limited fragments for all components. |
-| `POST` | `/actuator/specificfragments` | Triggers a re-sync of specific (tenant-owned) fragments for all components. |
+| `POST` | `/actuator/specificfragments` | Triggers a re-sync of specific (tenant-owned) fragments for a given `tenantId` + `componentIdentifier`. Both parameters are required. |
 | `POST` | `/actuator/synclimitedfragments` | Syncs limited fragment availability for a specific `tenantId` + `componentIdentifier`. Useful for manually re-driving what a `SyncFragmentsEvent` would do. |
 
 ---
@@ -78,8 +78,10 @@ The service uses a relational database (JPA/Hibernate, single schema).
 | `web_application_entry_point` | CDN URL for the micro-frontend remote entry |
 | `web_application_capabilities` | Set of `WebApplicationCapability` |
 | `component_api_base_uri` | Base URI for the component's own service, used when fetching fragments |
+| `key_details` | Optional list of string keys describing additional detail fields |
+| `supported_products` | Set of `Product`: `PRO`, `SCHOOL` |
 
-Related tables: `component_localization` (i18n key/value per locale), `component_supported_os` (OS + optional feature flag per OS entry).
+Related tables: `component_localization` (i18n key/value per locale), `component_supported_os` (OS family + minimum version + optional feature flag per OS entry).
 
 ### `fragment` table (single-table inheritance)
 
@@ -96,6 +98,12 @@ Key fragment fields: `identifier`, `name`, `description`, `feature_flag`, `type`
 ### `limited_tenant_fragment` table
 
 Junction table linking a `LimitedFragment` to a `tenantId` string. Populated when a `SyncFragmentsEvent` is processed; the sync queries the component's own service for which limited fragments are currently available for that tenant.
+
+---
+
+## Known Callers
+
+- `blueprint-management-service` — calls the internal component endpoints before save (to validate component configurations against the registry's schema) and at deploy time (to look up component metadata and resolve which component service to call). Results are Caffeine-cached in BMS.
 
 ---
 

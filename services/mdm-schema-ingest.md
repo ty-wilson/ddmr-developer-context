@@ -16,13 +16,13 @@ The MDM Schema Ingest Pipeline is a fully event-driven, serverless system that t
 
 ### 1. Ingest (`ingest/`)
 
-An EventBridge scheduler fires the `mdm-git-ingest` Lambda daily. The Lambda:
+An EventBridge scheduler fires the `mdm-git-ingest` Lambda hourly (prod and dev: `rate(1 hours)`; stage: `rate(30 minutes)`). The Lambda:
 
-1. Checks for a local clone of `https://github.com/apple/device-management.git` on an EFS volume (mount point `$EFS_MOUNT_POINT`, default `/mnt/lambda/`). If absent, performs an initial clone.
-2. Runs `git fetch`. If new commits are found on `release`, `beta`, or seed branches, all changed branches are merged into a single working tree so one version is generated per daily scan.
+1. Checks for an initialized git working tree for `https://github.com/apple/device-management.git` on an EFS volume (mount point `$EFS_MOUNT_POINT`, e.g. `/mnt/lambda/`). If absent, initializes a new git repo with `git init` and adds `origin` as a remote — no initial clone is performed at this step.
+2. Runs `git fetch --prune`. Any branch refs returned (new or updated) are merged into the working tree so one version is generated per scan.
 3. Copies the merged tree into a versioned snapshot directory named `{repo-name}-{version}` on EFS.
 4. Reads the previous version integer from SSM Parameter Store (`/mdm_schema/version/{repo-name}`), creates the parameter if it does not exist (starts at `1`), then increments and saves the new version.
-5. On any failure the remote tracking branches are deleted so git will re-detect the same commits on the next scan, effectively retrying automatically.
+5. On any failure the `origin` remote is removed and re-added with the same URL, which clears all remote-tracking references so that git will re-detect the same commits on the next scan, effectively retrying automatically.
 
 The Lambda requires a `git` binary as a Lambda layer (`git-binary-layer`) extracted from the AWS Lambda Amazon Linux image; `simple-git` (npm) and `js-yaml` are provided via separate Node.js layers.
 
@@ -31,7 +31,7 @@ The Lambda requires a `git` binary as a Lambda layer (`git-binary-layer`) extrac
 A Parameter Store `Create`/`Update` event fires an EventBridge rule, which invokes the `mdm-schema-transformation` Lambda.
 
 1. Reads the current version from Parameter Store and locates the corresponding EFS snapshot directory.
-2. Iterates every YAML file under `mdm/profiles/` (profiles have full support; other MDM component types are best-effort).
+2. Iterates every `.yaml` file in the versioned EFS snapshot directory recursively (profiles under `mdm/profiles/` have full support; other MDM component types are best-effort).
 3. Converts each YAML schema to JSON Schema using `js-yaml` plus custom mapping logic in `schema-transformation.ts` and `subkeys-transformation.ts`.
 4. Clones `mdm-jamf-schema` (a private GitHub repo) to Lambda `/tmp` using a GitHub App (app ID `1087011`, installation `58361391`, private key from Parameter Store). For each generated schema, looks up the corresponding file at the same relative path (e.g. `mdm/profiles/com.apple.wifi.managed.json`) and deep-merges any Jamf-specific metadata (sensitive flags, validation rules, business metadata) into the JSON Schema. Clones the jamf schema repo once per invocation; failure to clone aborts the entire transformation.
 5. Uploads all enhanced schemas to the JSON Schema S3 bucket under `device-management/{version}/mdm/profiles/{payload-type}.json`.
@@ -66,7 +66,7 @@ The `mdm-ui-schema` repo (`device-management/mdm/profiles/`) holds manually cura
 
 ## Serving Layer (ALB + Path-Mapping Lambda)
 
-A public-certificate, HTTPS-only internal ALB (`mdm-schema-load-balancer`) sits behind a Route 53 A record (`api.{env}.mdm-schema.jamf.build`). Access is restricted to CloudWAN trust CIDRs and any explicitly configured CIDR blocks; there is no public internet access. The ALB forwards all traffic to the `path-mapping` Lambda (Node.js 24.x), which translates URL paths to S3 `GetObject` calls.
+A public-certificate, HTTPS-only internal ALB (`mdm-schema-load-balancer`) sits behind a Route 53 A record. Dev and stage use `api.{env}.mdm-schema.jamf.build`; prod uses per-region subdomains under `mdm-schema.platform.jamfapps.io` (e.g. `use2.mdm-schema.platform.jamfapps.io`). Access is restricted to CloudWAN trust CIDRs and any explicitly configured CIDR blocks; there is no public internet access. The ALB forwards all traffic to the `path-mapping` Lambda (Node.js 24.x), which translates URL paths to S3 `GetObject` calls.
 
 **URL patterns handled by the path-mapping Lambda:**
 
@@ -89,9 +89,16 @@ Frontends call the internal ALB endpoint directly using the environment-specific
 
 - dev: `https://api.dev.mdm-schema.jamf.build/v1/...`
 - stage: `https://api.stage.mdm-schema.jamf.build/v1/...`
-- prod: `https://api.prod.mdm-schema.jamf.build/v1/...`
+- prod (per region): `https://use2.mdm-schema.platform.jamfapps.io/v1/...`, `https://euc1.mdm-schema.platform.jamfapps.io/v1/...`, `https://apne1.mdm-schema.platform.jamfapps.io/v1/...`
 
 The `API_VERSION` (currently `v1`) is baked into the path-mapping Lambda as an environment variable and all URL patterns are prefixed with it. Frontends do not call S3 directly.
+
+---
+
+## Known Consumers
+
+- `configuration-profile-service` — uses schemas from the Java schema S3 bucket at build time via `jsonschema2pojo` for DTO generation. The `javaName`/`existingJavaType` properties added by the Java Enhancements Lambda are specifically there to support this.
+- `configuration-profile-plist-migrator` — calls the `mdm-schema-internal` endpoint at runtime (via the internal ALB) to look up schema definitions during migration processing.
 
 ---
 

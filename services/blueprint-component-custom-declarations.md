@@ -78,6 +78,12 @@ Exactly one of `secret` or `credentials` must be set under `dss.dss-token-creden
 
 ---
 
+## Not to Be Confused With
+
+`declaration-service` follows the same translate/validate/cleanup pattern and is also called by Blueprint Management Service. The distinction: `blueprint-component-custom-declarations` handles user-authored custom declarations (arbitrary payloads composed by end users), whereas `declaration-service` handles DDmR-team-owned declaration types. Both ultimately write to Declaration Storage Service (DSS). The Component Registry's `translator.baseUri` for a given component type determines which service BMS routes to.
+
+---
+
 ## Gotchas
 
 **Validate is a structural check only.** `POST /component/validate` confirms the payload can be deserialized as a list of `Declaration` objects with valid JSON `payload` fields. It does not validate the payload content against any Apple DDM schema. Upstream callers are responsible for semantic correctness.

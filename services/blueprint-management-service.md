@@ -113,6 +113,15 @@ Both listeners use `Key_Shared` subscription and have DLQ policies configured in
 
 **Declaration Storage Service (DSS) / Configuration Profile Service** — Referenced in `catalog-info.yaml` as consumed APIs, and reflected in the `DSSDeployableObject` entity. BMS records DSS declaration identifiers and version hashes that result from deployments but does not own DSS data.
 
+### Component Services
+
+During deployment, BMS orchestrates a set of component services by calling their translate, validate, and cleanup endpoints. The Component Registry (`blueprint-components-registry-service`) tells BMS which component service to call for each component type. The component services BMS currently calls are:
+
+- `configuration-profile-service` — handles the `ddm-profile` component type
+- `blueprint-component-declarations-service` — handles DDmR-team-owned declaration components
+- `blueprint-component-sw-update-service` — handles software update components
+- `blueprint-component-custom-declarations` — handles user-authored custom declaration components
+
 ---
 
 ## Key Design Decisions and Gotchas

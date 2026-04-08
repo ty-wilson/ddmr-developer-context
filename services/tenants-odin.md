@@ -41,7 +41,7 @@ All routes are prefixed with `/api/{apiVersion}`. The version is part of the pat
 **Cross-resource lookups**
 - `GET /api/v1/tenants/{tenantId}` — fetch any tenant by its Odin UUID
 - `GET /api/v1/environments/{environmentId}` — fetch an environment by its UUID
-- `GET /api/v1/tenants/{tenantId}/migrate-organization` — move a tenant to a different organization (by target CRM ID)
+- `POST /api/v1/tenants/{tenantId}/migrate-organization` — move a tenant to a different organization (by target CRM ID)
 
 **Product-keyed tenant lookup / upsert** (most common integration pattern)
 - `PUT /api/v{1-2}/products/{productCode}/tenants/{productTenantId}` — "ensure" a tenant exists for this product+productTenantId combo; creates if absent, returns org/tenant/environment IDs either way. Uses `organizationCrmId` in the body to find or create the org via CAL.
@@ -58,7 +58,7 @@ All routes are prefixed with `/api/{apiVersion}`. The version is part of the pat
 
 ## Data Model
 
-Odin uses a **single DynamoDB table** (`tenants`) with two GSIs that allow CRM-keyed and product-keyed lookups.
+Odin uses a **single DynamoDB table** (`tenants`) with five GSIs for CRM-keyed, tenant-UUID-keyed, product-keyed, environment-keyed, and Jamf-CRM-keyed lookups (GSI1–GSI5).
 
 **Core entities:**
 
@@ -69,6 +69,16 @@ Odin uses a **single DynamoDB table** (`tenants`) with two GSIs that allow CRM-k
 **Additional DynamoDB tables:**
 - `tenants-cache` — cached OIDC/JWK configurations for JWT validation
 - `tenants-audit-logs` — audit trail of mutations
+
+## Known Callers
+
+Several services within the blueprints system call Odin at runtime to resolve tenant metadata, and cache the results to avoid repeated lookups:
+
+- `blueprint-management-service` — calls Odin at deploy time to resolve `organizationId` and `environmentId` for the deployment task payload (Caffeine-cached under the `tenants` key)
+- `blueprint-components-registry-service` — calls Odin on every component/fragment read to look up `organizationId`, `environmentId`, and `productCode` for feature flag evaluation (no additional cache layer beyond the LD SDK)
+- `blueprint-component-declarations-service` — calls Odin as part of tenant context resolution during translate/validate operations
+
+---
 
 ## Dependencies
 

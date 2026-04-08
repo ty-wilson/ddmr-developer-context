@@ -39,7 +39,7 @@ Translates a software update configuration into a DDM declaration stored in DSS.
 }
 ```
 
-- `targetOSVersion`: required. Must match `^[1-9]\d?(?:\.(?:\d|[1-9]\d)){1,2}$` (e.g., `17`, `17.5`, `17.5.1`).
+- `targetOSVersion`: required. Must match `^[1-9]\d?(?:\.(?:\d|[1-9]\d)){1,2}$` (e.g., `17.5`, `17.5.1`). The regex requires at least one dot segment, so a bare major version like `17` is not valid.
 - `targetLocalDateTime`: required. Local device time by which update must occur.
 - `detailsURL`: optional. If `included` is `true`, `value` must be a non-empty HTTP/HTTPS URL.
 - `currentDeployableObjects`: informational; the service does not currently use it for upsert logic (it always creates a new declaration).
@@ -70,7 +70,7 @@ Validates a configuration against the same rules as `/translate` without creatin
 }
 ```
 
-Error codes are snake_case (e.g., `NOT_NULL`, `PATTERN`, `INPUT_MISMATCH`).
+Error codes are the simple names of the violated Jakarta constraint annotations in uppercase (e.g., `NOT_NULL`, `PATTERN`, `INPUT_MISMATCH`).
 
 ### `POST /cleanup`
 
@@ -120,7 +120,7 @@ No Pulsar topics produced or consumed. No DynamoDB. No caching.
 
 **`detailsURL.included` gates whether the URL is written to the DDM payload.** If `included` is `false`, the `DetailsURL` field is omitted from the Apple declaration entirely regardless of whether `value` is populated. If `included` is `true`, `value` must be a non-empty HTTP/HTTPS URL or validation will fail.
 
-**`targetOSVersion` format is strict.** The regex `^[1-9]\d?(?:\.(?:\d|[1-9]\d)){1,2}$` means leading zeros and patch versions like `17.5.10` are invalid (the last segment allows only 1–2 digit numbers). Check against this pattern before calling `/translate`.
+**`targetOSVersion` format is strict.** The regex `^[1-9]\d?(?:\.(?:\d|[1-9]\d)){1,2}$` requires at least one dot segment (so `17` alone is invalid), disallows leading zeros, and limits the last segment to 1–2 digit numbers (so `17.5.10` is invalid). Check against this pattern before calling `/translate`.
 
 **Cleanup failures do not short-circuit.** The cleanup method attempts to delete every provided declaration ID and aggregates failures. A non-200 response means at least one deletion failed, but others may have succeeded. Retry only the IDs that failed if you track them; blindly retrying the full list is safe (DSS returns success on deleting an already-deleted declaration).
 

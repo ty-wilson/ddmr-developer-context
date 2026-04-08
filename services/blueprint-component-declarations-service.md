@@ -16,7 +16,7 @@ Blueprint Component Declarations Service (BCDS) is a stateless translation layer
 
 All routes sit under `/v1/components/<component-type>`. Authentication is M2M bearer token in production. In non-M2M environments, a `tenantId` header is required on every request (injected by the API gateway in production).
 
-There are nine component types, each exposing the same three operations:
+There are eight component types, each exposing the same three operations:
 
 | Component type | Base path |
 |---|---|

@@ -58,7 +58,7 @@ Two auth types are supported:
 - `jwksInternalAlt` / `jwksExternalAlt`: Additional JWKS endpoints for migration periods where two issuer URLs are simultaneously valid.
 - `scope`: required scope prefix string.
 
-The issuer-to-validator map is built at startup. Lookup is a prefix match: a token whose `iss` starts with any registered key is accepted. JWKS are fetched asynchronously and cached for 24 hours (Micronaut `jwks` cache). At startup, `JwtProxyInfo` eagerly fetches all JWKS and logs a warning if any fail — the sidecar still starts.
+The issuer-to-validator map is built at startup. Lookup is a prefix match: a registered map key that starts with the token's `iss` claim is accepted (i.e., the map key is the prefix, the token `iss` is the value being tested). JWKS are fetched asynchronously and cached for 24 hours (Micronaut `jwks` cache). At startup, `JwtProxyInfo` eagerly fetches all JWKS and logs a warning if any fail — the sidecar still starts.
 
 Setting `scope = "*"` for either auth type disables scope checking entirely for that type.
 

@@ -8,7 +8,7 @@ Last reviewed: 2026-04-07
 
 ## Summary
 
-Device Declaration Reporting Service (DRS) is a Spring Boot 3.5 / Java 21 service owned by the jabberwocky team. Its intended role is device-oriented reporting of Declaration Management declarations — presenting per-device declaration status in a way that is useful to callers who need to know what declarations are currently applied to a given device and whether those declarations are in a desired state. The service is deployed to production but is **early in development**: as of this writing, the only implemented endpoint is a placeholder `/test` route, and major integration points (M2M auth, Pulsar consumption of status reports, S3/MinIO storage, Declaration Storage Service calls) are all stubbed out or commented in config. Treat this service's API surface as unstable — no stable endpoints exist for external callers yet.
+Device Declaration Reporting Service (DRS) is a Spring Boot 3.5 / Java 21 service (standard MVC, not WebFlux) owned by the jabberwocky team. Its intended role is device-oriented reporting of Declaration Management declarations — presenting per-device declaration status in a way that is useful to callers who need to know what declarations are currently applied to a given device and whether those declarations are in a desired state. The service is deployed to production but is **early in development**: as of this writing, the only implemented endpoint is a placeholder `/test` route, and major integration points (M2M auth, Pulsar consumption of status reports, S3/MinIO storage, Declaration Storage Service calls) are all stubbed out or commented in config. Treat this service's API surface as unstable — no stable endpoints exist for external callers yet.
 
 ---
 
@@ -29,7 +29,7 @@ No tenant-scoped or device-scoped reporting endpoints are implemented yet.
 
 ## Data Model
 
-No persistent data store is owned by this service yet. The README notes S3 (via AWS SDK, with MinIO as a local stand-in) as the intended storage backend for declaration status report data — the local dev profile configures MinIO credentials and notes the bucket is created automatically on startup. No schema or key structure is defined in code at this time.
+No persistent data store is owned by this service yet. The README notes S3 (via AWS SDK, with MinIO as a local stand-in) as the intended storage backend for declaration status report data, but this is not yet implemented — there is no S3 client code, no MinIO configuration in `application-local.yaml`, and no MinIO service in `docker-compose.yaml`. No schema or key structure is defined in code at this time.
 
 **Planned upstream data source:** Apple MDM status reports published to the `persistent://pdd/apple-ddm/statusreport` Pulsar topic. The Pulsar subscription (`device-declaration-reporting-service`) is defined in commented-out config but not yet wired up.
 
@@ -42,7 +42,7 @@ No persistent data store is owned by this service yet. The README notes S3 (via 
 | Declaration Storage Service (DSS) | Listed in README as a direct dependency; integration not yet implemented in code |
 | MDM Server (Jamf Pro) | Listed in README as a direct dependency; integration not yet implemented in code |
 | Apache Pulsar (`pdd/apple-ddm/statusreport`) | Planned consumer of Apple DDM status reports; commented out in `application.yaml` |
-| AWS S3 / MinIO | Planned storage backend; configured in `application-local.yaml` for local dev, not yet active in production |
+| AWS S3 / MinIO | Planned storage backend described in README; not yet implemented — no client code, no local configuration |
 | Jamf Maple (`com.jamfsoftware.mdm:maple:4.3.1`) | MDM integration library; pulled in but no usage present yet |
 | M2M auth (`jamf.platform.m2m`) | Configured in `application-m2m.yaml`; disabled (`authentication-enabled: false`) and commented out in all environments |
 
@@ -56,7 +56,7 @@ No persistent data store is owned by this service yet. The README notes S3 (via 
 
 **Pulsar is excluded in local dev.** `application-local.yaml` explicitly excludes `PulsarAutoConfiguration`, so the service starts without a Pulsar connection locally.
 
-**S3 bucket is auto-created locally.** When running with the `local` profile, the service expects a running MinIO instance (`docker compose up -d`) and creates the target bucket on startup. There is no equivalent in deployed environments yet.
+**S3/MinIO is not yet wired up locally.** The README describes a future local dev workflow using MinIO, but neither `application-local.yaml` nor `docker-compose.yaml` currently configure it (docker-compose only starts Pulsar). There is no S3 client code in the service yet.
 
 **Tests are commented out in CI.** The `test` job in the GitHub Actions workflow is disabled. The test infrastructure exists (JUnit, Spring Boot Test) but coverage is minimal.
 

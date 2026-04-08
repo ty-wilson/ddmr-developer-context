@@ -65,11 +65,13 @@ Required environment variables: `API_GW_URL`, `INT_API_GW_CLIENT_ID`, `INT_API_G
 
 ## Gotchas
 
-**`filterDefaults` is off by default and per-request.** The `filterDefaults: true` header must be passed explicitly on each `/transform` or `/migrate` call. The `/schedule` endpoint accepts it as part of the request body payload and applies it during processing.
+**`filterDefaults` is off by default and per-request.** The `filterDefaults: true` header must be passed explicitly on each `/transform`, `/migrate`, or `/schedule` call. All three endpoints read `filterDefaults` from the request header.
 
 **MCX type resolution depends on `PayloadDisplayName`.** For `com.apple.MCX` payloads, the transformer rewrites the type using the display name. Known mappings (`"FileVault 2 Options"`, `"Mobility"`, `"Managed Wi-Fi"`) are hardcoded. Any other display name is used as-is after stripping whitespace and special characters — if the display name is missing, the type is left as `com.apple.MCX`, which will likely fail Blueprint creation.
 
 **MDM schema lookups are cached but can fail.** The `filterDefaults` rule calls `mdm-schema-internal` to fetch payload schemas. These calls are cached per URL, but if the schema service is unreachable or returns a 404 for an unknown payload type, the request throws `PayloadNotFoundException`. Monitor for this when migrating profiles with uncommon payload types.
+
+**`filterDefaults` on `/schedule` is a request header, not a body field.** Like the other endpoints, `/schedule` reads `filterDefaults` from the `filterDefaults` request header (default `false`), not from a field inside the JSON body.
 
 **`/schedule` does not execute the migration synchronously.** It records the migration as `SCHEDULED` in DynamoDB and returns immediately. The actual transformation and Blueprint creation must be triggered separately — there is no background worker in this service that picks up scheduled records automatically.
 

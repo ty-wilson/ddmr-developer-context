@@ -69,8 +69,7 @@ Services are injected by the host and consumed by remotes via Feature Hub bindin
 | `jamf:permissions_service` | `permissions-service` | Admin permission flags |
 | `jamf:organization_service` | `organization-service` | Organization data store |
 | `jamf:feature_hub_provider_service` | `feature-hub-provider-service` | Shares the Feature Hub instance with sub-remotes |
-| `jamf:blueprints_service` | `blueprints-service` | Communication channel between Blueprints and its component remotes |
-| `jamf:blueprints_components` | `blueprints-components` | Shared React components for blueprint component MFEs |
+| `jamf:blueprints-service` | `blueprints-service` | Communication channel between Blueprints and its component remotes |
 | `jamf:json_schema_form_generator_service` | `json-schema-form-generator-service` | Bridge between JSON Schema Form Generator and Configuration Profiles |
 | `jamf:nav_prevention_service` | `nav-prevention-service` | Blocks navigation when a form is dirty |
 | `jamf:ai_service` | `ai-service` | Sends prompts to the AI Assistant from host apps |
@@ -158,6 +157,7 @@ pnpm nx integration-tests-pact @jmf/blueprints  # Pact consumer contracts
 
 ## Shared Libraries and Utilities
 
+- **`@jamf/mfe-blueprints-components`** — Shared React components for blueprint component MFEs (forms, filters, animations). Not a Feature Hub service — imported directly as an npm dependency.
 - **`@jmf/react-remote-wrapper`** — React bootstrapping utilities and `AuthProvider` for standalone dev.
 - **`@jmf/react-auth-provider`** — Auth0 provider for React apps in standalone/local dev.
 - **`@jmf/mock-services`** — Mock implementations of all Feature Hub services for standalone dev.

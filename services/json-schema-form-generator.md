@@ -67,7 +67,7 @@ Key methods:
 - `SupportedOs` badge component showing OS compatibility info from the Jamf schema extension
 - Dictionary field support (`additionalProperties` schemas open a drawer sub-page via `DictionaryEdit`)
 - Animated page transitions (framer-motion) between root form and dictionary sub-page
-- `json-schema-library` used for schema resolution, replacing the standalone's bespoke `unrefSchema` utility
+- `json-schema-library` used for schema validation (via `compileSchema`); the in-hub MFE still has its own bespoke `unrefSchema` utility for `$ref` resolution, same as the standalone
 
 ---
 
@@ -91,8 +91,6 @@ The `blueprint-component-declarations` loader intentionally does **not** append 
 **`$ref` resolution is internal.** Both versions call `unrefSchema` at startup to inline all `$ref` pointers. The raw schema with `$ref`s is what you pass in; JSFG handles resolution. Do not pre-resolve before passing.
 
 **Condition evaluation is static in the standalone.** `if/then` conditions in the standalone version are evaluated once against an empty value at mount. If conditions depend on runtime values, use the in-hub MFE version which uses `json-schema-library` for more complete schema traversal.
-
-**AJV is pinned to 6.x in the in-hub MFE.** There is a known CSP issue with newer AJV versions. Do not upgrade without verifying CSP compatibility.
 
 **`getCanBeSaved()` is not reactive.** The integrator must read it after calling `setSaveClicked(true)` — there is no callback. The JSFG MFE sets `canBeSaved` synchronously via a nanostores subscription when the error store updates, but the timing depends on React render cycles. The configuration-profiles integrator works around this by gating `getPayloadOutputFormValue()` inside the same event handler immediately after `setSaveClicked`.
 

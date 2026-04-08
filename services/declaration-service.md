@@ -111,6 +111,12 @@ The `strict` endpoints use the same shape except declarations omit `payloadKey` 
 
 ---
 
+## Not to Be Confused With
+
+`blueprint-component-custom-declarations` follows a similar translate/validate/cleanup pattern and is also called by Blueprint Management Service during deployment. The distinction is scope of responsibility: declaration-service handles DDmR-team-owned declaration types (structured configurations owned and versioned by the DDmR team), while `blueprint-component-custom-declarations` handles user-authored custom declarations — arbitrary declaration payloads that end users compose themselves. If you are unsure which service a component type routes to, check the Component Registry's `translator.baseUri` for that component.
+
+---
+
 ## How It Differs from Declaration Storage Service (DSS)
 
 This is a common point of confusion:

@@ -90,6 +90,19 @@ DSS does not consume any Pulsar topics. It is a pure producer from an eventing s
 
 ---
 
+## Known Callers
+
+Services that write to or read from DSS at runtime:
+
+- `scoping-engine` — calls DSS via `DeclarationStorageWrapper` (from the `declaration-product-springboot-starter`) to manage management-properties declarations for devices
+- `declaration-service` — uses `declaration-product-springboot-starter` to store and delete all declarations it translates
+- `blueprint-component-declarations-service` — calls DSS as part of its translate/cleanup lifecycle
+- `blueprint-component-sw-update-service` — calls DSS as part of its translate/cleanup lifecycle
+- `blueprint-component-custom-declarations` — calls DSS via `declaration-product-springboot-starter` for user-authored custom declarations
+- `configuration-profile-service` — calls DSS for configuration profile declaration storage
+
+---
+
 ## Client Libraries
 
 Two client libraries exist for product services to call DSS. Do not construct raw HTTP calls — use one of these.
