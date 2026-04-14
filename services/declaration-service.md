@@ -87,7 +87,7 @@ The `strict` endpoints use the same shape except declarations omit `payloadKey` 
 | Declaration Storage Service (DSS) | All declaration create/delete operations go through the `declaration-product-springboot-starter` client (`DeclarationProductClient`). declaration-service does not own any persistent storage itself. |
 | Jamf robocop (M2M) | Fetches per-tenant M2M tokens with scopes `tenant` and `declaration-storage-product`. Credentials are read from AWS Secrets Manager at startup. |
 | AWS Secrets Manager | Stores the M2M client ID and secret. Accessed via `SecretsService` using `aws.sdk.kotlin:secretsmanager`. |
-| Apple DDM schema (classpath) | The validation path loads schemas from `classpath:validation-schemas.json` (bundled at build time) and caches them in memory for the lifetime of the process. The `strictvalidation.schemaUrlBase`, `schemaTtl`, and `schemaVersion` config properties exist but are not currently wired to anything. |
+| Apple DDM schema (classpath) | The validation path loads schemas from `classpath:validation-schemas.json` (bundled at build time) and caches them in memory for the lifetime of the process. The `strictvalidation.schemaUrlBase`, `schemaTtl`, and `schemaVersion` config properties exist but are not wired to anything. |
 
 ---
 

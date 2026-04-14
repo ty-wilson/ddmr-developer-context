@@ -4,11 +4,11 @@ Last reviewed: 2026-04-07
 
 > **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
 
-The micro-frontend-hub is the Nx + pnpm monorepo that hosts every MFE app for the Blueprints/DDmR platform. All product UI lives here. MFEs are built as Module Federation remotes and loaded at runtime by a host shell via the Feature Hub pattern, which injects shared services (auth, routing, tenant, etc.) across framework boundaries. The repo ships three host shells (Angular, React/Vite, Vue) and approximately 50+ remote apps and 30+ shared libraries.
+The micro-frontend-hub is the Nx + pnpm monorepo that hosts every MFE app for the Blueprints/DDmR platform. All product UI lives here. MFEs are built as Module Federation remotes and loaded at runtime by a host shell via the Feature Hub pattern, which injects shared services (auth, routing, tenant, etc.) across framework boundaries. The repo ships three host shells (Angular, React/Vite, Vue) and many remote apps and shared libraries.
 
 ## Monorepo Structure
 
-- **Toolchain**: Nx 22 (package mode) + pnpm 9.12.2 workspaces. Node >= 20 required.
+- **Toolchain**: Nx (package mode) + pnpm workspaces. Node >= 20 required.
 - **Layout**:
   - `apps/` — all MFE applications (remotes + shells). Each is an independent deployable unit.
   - `libs/` — shared libraries published to the internal Artifactory npm registry (`https://artifactory.jamf.build/artifactory/api/npm/npm-local/`).
@@ -22,26 +22,26 @@ The micro-frontend-hub is the Nx + pnpm monorepo that hosts every MFE app for th
 
 | App (`@jmf/`) | Framework | Description |
 |---|---|---|
-| `angular-shell` | Angular 19 | Legacy host shell; uses Webpack module federation + `@angular/elements`. Provides Feature Hub services to remotes. |
-| `react-vite-shell` | React 18 + Vite | Primary React host shell. Provides Feature Hub services, Sentry integration, routing. |
-| `vue-shell` | Vue 3 + Vite | Vue host shell. Mirrors react-vite-shell feature set using `vue-router`. |
-| `blueprints` | React 18 + Vite | Main Blueprints product app. Loads blueprint-component-* remotes dynamically. Owns Pact consumer contracts. |
-| `blueprint-component-declarations` | React 18 + Vite | DDM declarations management UI within a blueprint. |
-| `blueprint-component-configuration-profiles` | React 18 + Vite | Configuration profiles management UI within a blueprint. Loads json-schema-form-generator as a sub-remote. |
-| `blueprint-component-*` (20+ apps) | React 18 + Vite | Individual blueprint component editors (passcode, software updates, Safari, disk management, etc.). |
-| `blueprints-component-declarations` | React 18 + Vite | Declarations component variant used in the blueprints context. |
-| `scoping` | React 18 + Vite | UI for the Scoping Engine — manages scopes, group assignments, and device targeting. |
-| `compliance-benchmarks` | React 18 + Vite | Compliance benchmarks and reporting UI. Uses `ky` HTTP client, Pact tests, visual regression tests. |
-| `ascent` | React 18 + Vite | Elevate product UI. Uses CSRF session auth, urql/GraphQL, ag-grid, chart.js, MSW for mocks. |
-| `app-switcher` | Vue 3 + Vite | App switcher dropdown in host shells. Vue only MFE; uses `@hey-api` OpenAPI client generation. |
-| `platform-authorization` | React 18 + Vite | API Clients management UI in Jamf Account. |
-| `json-schema-form-generator` | React 18 + Vite | Dynamic JSON Schema form renderer, loaded as a sub-remote by configuration-profiles. |
-| `declaration-reporting-mfe` | React 18 + Vite | DDM declaration reporting and status UI. |
-| `scim-integration` | React 18 + Vite | SCIM provisioning configuration UI. Uses `ky`. |
-| `data-streams` | React 18 + Vite | Data streaming configuration UI. |
-| `mms-token-management` | React 18 + Vite | MDM token management. |
-| `configuration-profiles-migrator` | React 18 + Vite | Tooling to migrate legacy configuration profiles. |
-| `assistant` | React 18 + Vite | AI assistant MFE. |
+| `angular-shell` | Angular | Legacy host shell; uses Webpack module federation + `@angular/elements`. Provides Feature Hub services to remotes. |
+| `react-vite-shell` | React + Vite | Primary React host shell. Provides Feature Hub services, Sentry integration, routing. |
+| `vue-shell` | Vue + Vite | Vue host shell. Mirrors react-vite-shell feature set using `vue-router`. |
+| `blueprints` | React + Vite | Main Blueprints product app. Loads blueprint-component-* remotes dynamically. Owns Pact consumer contracts. |
+| `blueprint-component-declarations` | React + Vite | DDM declarations management UI within a blueprint. |
+| `blueprint-component-configuration-profiles` | React + Vite | Configuration profiles management UI within a blueprint. Loads json-schema-form-generator as a sub-remote. |
+| `blueprint-component-*` (20+ apps) | React + Vite | Individual blueprint component editors (passcode, software updates, Safari, disk management, etc.). |
+| `blueprints-component-declarations` | React + Vite | Declarations component variant used in the blueprints context. |
+| `scoping` | React + Vite | UI for the Scoping Engine — manages scopes, group assignments, and device targeting. |
+| `compliance-benchmarks` | React + Vite | Compliance benchmarks and reporting UI. Uses `ky` HTTP client, Pact tests, visual regression tests. |
+| `ascent` | React + Vite | Elevate product UI. Uses CSRF session auth, urql/GraphQL, ag-grid, chart.js, MSW for mocks. |
+| `app-switcher` | Vue + Vite | App switcher dropdown in host shells. Vue only MFE; uses `@hey-api` OpenAPI client generation. |
+| `platform-authorization` | React + Vite | API Clients management UI in Jamf Account. |
+| `json-schema-form-generator` | React + Vite | Dynamic JSON Schema form renderer, loaded as a sub-remote by configuration-profiles. |
+| `declaration-reporting-mfe` | React + Vite | DDM declaration reporting and status UI. |
+| `scim-integration` | React + Vite | SCIM provisioning configuration UI. Uses `ky`. |
+| `data-streams` | React + Vite | Data streaming configuration UI. |
+| `mms-token-management` | React + Vite | MDM token management. |
+| `configuration-profiles-migrator` | React + Vite | Tooling to migrate legacy configuration profiles. |
+| `assistant` | React + Vite | AI assistant MFE. |
 | `demo-react-remote` / `demo-vue-remote` / `demo-angular-remote` / `demo-vanilla-remote` | Various | Reference implementations for each supported framework. |
 
 ## Shell Integration
@@ -50,7 +50,7 @@ All MFEs integrate via the **Feature Hub** library (`@feature-hub/core`, `@featu
 
 - **Host shells** call `createFeatureHub()` to instantiate services and provide them to the Feature Hub Integrator. The `<feature-app-loader>` web component loads remote apps by URL.
 - **Remote apps** declare required/optional services in `feature.ts` (the Module Federation entry point). The host injects services at mount time. Services are accessed via `featureAppManager.getFeatureAppScope()` bindings.
-- **Module Federation**: Vite remotes use `@module-federation/vite` (1.7.1). Angular shell uses Webpack. Remote entry is exposed as `remoteEntry.js`. Vite remotes place assets under `/assets/`; Webpack remotes place them at root.
+- **Module Federation**: Vite remotes use `@module-federation/vite`. Angular shell uses Webpack. Remote entry is exposed as `remoteEntry.js`. Vite remotes place assets under `/assets/`; Webpack remotes place them at root.
 - **CSS scoping**: Vite remotes use `@jmf/vite-css-injection` to attach styles to the `feature-app-container` web component rather than `<head>`.
 - **Design system**: All apps consume Jamf Nebula web components (`@jamf/design-system-web-components-next`) and shared tokens (`@jamf/design-system-shared`).
 

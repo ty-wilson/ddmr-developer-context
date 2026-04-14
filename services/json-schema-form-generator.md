@@ -39,7 +39,7 @@ JSON Schema Form Generator (JSFG) renders interactive forms driven by a JSON Sch
 
 - **Repo:** `/Users/tyler.wilson/Projects/DDmR/micro-frontend-hub/apps/json-schema-form-generator`
 - **Package:** `@jmf/json-schema-form-generator` v2.x (private, deployed to CDN, not an npm package)
-- **Stack:** React 18 + Vue 3 (for web components), Feature Hub (`@feature-hub/core`, `@feature-hub/dom`, `@feature-hub/react`), nanostores, json-schema-library v10, Tanstack Query, framer-motion, Jamf Design System web components
+- **Stack:** React 18 + Vue 3 (for web components), Feature Hub (`@feature-hub/core`, `@feature-hub/dom`, `@feature-hub/react`), nanostores, json-schema-library, Tanstack Query, framer-motion, Jamf Design System web components
 - **JSON Schema validation:** Uses `json-schema-library` (replaces vuelidate) for schema traversal and validation.
 - **Entry point:** `feature.tsx` exports a `FeatureAppDefinition<DomFeatureApp>`. The app attaches to a DOM element via `createRoot`, shows a `SkeletonForm` while stylesheets load, then renders the full React tree.
 

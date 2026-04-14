@@ -29,7 +29,7 @@ All workflows live in `.github/workflows/`. The main ones for a service like `sc
 
 ### `shared-values-version` file
 
-Each service repo contains `values/shared-values-version`, a plain text file holding a 7-character SHA pinning the version of `platform-shared-values` the service expects. For example, `scoping-engine` currently pins `6ed3b09`. The `check-shared-values.yml` workflow verifies this on PRs.
+Each service repo contains `values/shared-values-version`, a plain text file holding a 7-character SHA pinning the version of `platform-shared-values` the service expects. The `check-shared-values.yml` workflow verifies this on PRs.
 
 ## components repo: ApplicationSet per Service
 
@@ -142,11 +142,11 @@ The `metacluster-automation: 'true'` label opts the Application into automated p
 - `syncArgoCD.groovy` — downloads the `argocd` CLI from `argo.jamf.build`, then calls `argocd app sync <name>` followed by `argocd app wait <name>` to block the pipeline until the sync is healthy.
 - `checkoutDeployments.groovy`, `runComponentTests.groovy`, `runSystemTests.groovy`, `captureComponentTestResults.groovy`, `captureSystemTestResults.groovy`, `createLocalDynamoTable.groovy`, `readDynamoJson.groovy`, `updatePerformance.groovy`, `updateSandbox.groovy` — additional pipeline utilities for test execution and non-ArgoCD deployments.
 
-The `lib/` directory contains bundled Groovy JAR dependencies (Groovy 5.0.0-alpha-1).
+The `lib/` directory contains bundled Groovy JAR dependencies.
 
 ## ddmr-deployments
 
-`ddmr-deployments` is an older Helm-values repository that predates the `components` / ApplicationSet pattern. It is still used for a small number of tooling applications (scope-membership-tool, mdm-tool, tenant-migration jobs) that are not yet migrated to the components pattern.
+`ddmr-deployments` is an older Helm-values repository that predates the `components` / ApplicationSet pattern. It is still used for a small number of tooling applications (scope-membership-tool, mdm-tool, tenant-migration jobs) that use the older deployment pattern.
 
 Structure:
 - `argo/apps/` — ArgoCD ApplicationSet YAMLs for the remaining tools. These use a `list` generator (explicit cluster/namespace entries) rather than the `clusters` selector pattern, and point directly at `helm/` subdirectories in this repo as their source. Example: `scope-membership-tool-appset.yaml`, `mdm-tool-appset.yaml`, `tenant-migration-job-appset.yaml`, `tenant-authorizer-appset.yaml`.

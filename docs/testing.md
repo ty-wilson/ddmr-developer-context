@@ -31,7 +31,7 @@ Component tests start the service under test inside a Testcontainer and exercise
 
 ### Stack
 
-- Kotlin 2.0, JDK 21, Spring Boot 3.3, Gradle
+- Kotlin, JDK 21, Spring Boot, Gradle
 - JUnit 5 (`@ExtendWith`, `@Tag`, `@SpringBootTest`)
 - Testcontainers (`PulsarContainer`, `GenericContainer` for DynamoDB local and the service image, `@Testcontainers`)
 - `WebTestClient` for HTTP assertions
@@ -136,11 +136,11 @@ Tests are named `<resource>-spike-<METHOD>-<groupCount>.yml`. The `groupCount` s
 
 ### Declaration Storage Service Tests
 
-The DSS performance tests include CSV device fixture files (`100devices.csv`, `1000devices.csv`) for data-driven scenarios. Test files do not follow the scoping-engine `<resource>-spike-<METHOD>-<groupCount>.yml` naming pattern; DSS files use their own conventions. `rampTo` is 100. The standard p99 threshold is 1000 ms (59 of 64 test files); 5 files use 500 ms, and some large-payload tests use 3000 ms.
+The DSS performance tests include CSV device fixture files (`100devices.csv`, `1000devices.csv`) for data-driven scenarios. Test files do not follow the scoping-engine `<resource>-spike-<METHOD>-<groupCount>.yml` naming pattern; DSS files use their own conventions. `rampTo` is 100. The standard p99 threshold is 1000 ms for most test files; a few use 500 ms, and some large-payload tests use 3000 ms.
 
 ## Contract Tests
 
-Contract tests use [Pact](https://docs.pact.io/) (v4 Pact format, `au.com.dius.pact` Gradle plugin version 4.6.x). They live in a `contract-test/` subproject inside the service repo.
+Contract tests use [Pact](https://docs.pact.io/) (v4 Pact format, `au.com.dius.pact` Gradle plugin). They live in a `contract-test/` subproject inside the service repo.
 
 ### Pact Broker
 
@@ -241,7 +241,7 @@ Unit tests use `TestSpringContextBase` as the `@ContextConfiguration` class. It 
 | Spring Boot Test / WebFlux Test | Context loading, `WebTestClient` |
 | Testcontainers | Containerized Pulsar, DynamoDB local, service images |
 | Mockito-Kotlin | Mocking in unit tests |
-| Pact (au.com.dius) 4.6.x | Consumer-driven contract testing |
+| Pact (au.com.dius) | Consumer-driven contract testing |
 | Artillery | Performance/load testing |
 | Postman / Newman | System smoke tests (DSS) |
 | JaCoCo + SonarQube | Coverage reporting (all repos) |

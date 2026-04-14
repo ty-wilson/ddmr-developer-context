@@ -8,7 +8,7 @@ Last reviewed: 2026-04-07
 
 ## Summary
 
-Blueprint Management Service (BMS) is a Spring Boot 3.5 / Java 21 service that owns the lifecycle of blueprints on the Jamf OCEAN platform. A blueprint is a named, versioned configuration object composed of ordered steps, where each step contains components (typed configuration payloads) and optional activation rules. BMS handles CRUD for blueprints, tracks a full version history on every edit, and coordinates deployments asynchronously via Apache Pulsar. It persists everything to PostgreSQL, enforces per-tenant isolation on every query, and integrates with the Component Registry, Tenant Service, and a downstream deployment executor.
+Blueprint Management Service (BMS) is a Spring Boot / Java 21 service that owns the lifecycle of blueprints on the Jamf OCEAN platform. A blueprint is a named, versioned configuration object composed of ordered steps, where each step contains components (typed configuration payloads) and optional activation rules. BMS handles CRUD for blueprints, tracks a full version history on every edit, and coordinates deployments asynchronously via Apache Pulsar. It persists everything to PostgreSQL, enforces per-tenant isolation on every query, and integrates with the Component Registry, Tenant Service, and a downstream deployment executor.
 
 ---
 
@@ -138,6 +138,6 @@ During deployment, BMS orchestrates a set of component services by calling their
 
 **Component configuration transformation and private config.** At save time, component configurations are validated against the Component Registry's schema. If a component returns sensitive fields, they are split into `private_configuration` (encrypted at rest via `SensitiveConfigurationConverter`) and the sanitized `configuration`. Private configuration is carried forward across version bumps using a three-tier lookup: (1) exact positional match (same step index and component index with matching identifier), (2) identifier match within the same step, (3) identifier match across all steps. The first match found wins. The private config is included in the `blueprint-deployment-task` payload so the executor has it during deployment.
 
-**`OriginSystemType` (BMS vs BDS).** Deployable objects and activation declarations carry an `origin_system_type` field (`BMS` or `BDS`). This is being populated as a migration from an older system and is marked TODO as required after migration completes. Do not rely on it always being non-null in older records.
+**`OriginSystemType` (BMS vs BDS).** Deployable objects and activation declarations carry an `origin_system_type` field (`BMS` or `BDS`). May be null in older records.
 
 **Cache invalidation.** Component Registry and Tenant Service responses are cached with Caffeine but have no explicit eviction hooks. Stale cache entries can cause component validation to use outdated schemas until the cache TTL expires (configured in `CacheProperties`).

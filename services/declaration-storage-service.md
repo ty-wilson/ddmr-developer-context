@@ -141,7 +141,7 @@ Note: Most operations in the client target v2 endpoints. Two exceptions: `remove
 
 **`channelReplacement` is a server-side token substitution.** When set on a declaration, DSS replaces that string in the payload JSON with the real channel identifier at fetch time (`GET .../declaration/{group}/{identifier}`). This lets a single declaration payload be shared across channels. The placeholder must be 4–32 non-whitespace characters.
 
-**BYOK encryption is mid-rollout.** Which tenants get payload encryption is controlled by `privacy.force-tenants` config or the per-request `X-TenantEncryption` header. Internally, DSS always reads the prefix (`json:` / `iron:`) to determine how to decode; callers never see raw prefixed values through the API.
+**BYOK encryption is opt-in per tenant.** Which tenants get payload encryption is controlled by `privacy.force-tenants` config or the per-request `X-TenantEncryption` header. Internally, DSS always reads the prefix (`json:` / `iron:`) to determine how to decode; callers never see raw prefixed values through the API.
 
 **503 during tenant migration.** While a tenant migration is in progress (indicated by a `MIGRATION / #FROM#<tenantId>` item in DynamoDB), most write endpoints and some reads return `503 Service Unavailable`. Your client should treat 503 as transient and retry with backoff.
 

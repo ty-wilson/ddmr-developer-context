@@ -94,6 +94,6 @@ Exactly one of `secret` or `credentials` must be set under `dss.dss-token-creden
 
 **No retry or error handling around DSS writes in translate.** If DSS returns an error mid-list during translate, the call throws and the response is an error. Any DSS records already written in that request are not cleaned up automatically. Blueprint Management Service is expected to call cleanup if translate fails partway through.
 
-**`versionHash` is always empty.** The `versionHash` field in the translate response is hardcoded to `""` with a TODO noting it should be populated with a DSS `serverToken` once the service migrates to the v2 DSS API. Do not rely on this field having a meaningful value.
+**`versionHash` is always empty.** The `versionHash` field in the translate response is hardcoded to `""`. Do not rely on this field having a meaningful value.
 
 **Secrets Manager client is a singleton.** `SecretsServiceBuilder` uses a `compareAndSet` pattern to ensure only one `SecretsManagerClient` is created. If the AWS region or profile needs to change at runtime, a restart is required.

@@ -75,7 +75,7 @@ Mismatch detection: if DynamoDB has a record but its stored tenant ID differs fr
 
 **`platformTenant` vs `tenantId` attribute.** Some older DynamoDB records use `platformTenant` as the attribute name. The lookup reads `platformTenant` preferentially when present. New records are always written with `tenantId`.
 
-**`rejectRequestInStageHack` is not yet removed.** This property exists as a staging test shim; it should be treated as dead code in production. If it is accidentally enabled, all requests for any new `(organizationId, instanceId)` pair will be rejected for at least one hour.
+**`rejectRequestInStageHack` exists as a staging test shim.** Treat as dead code in production. If it is accidentally enabled, all requests for any new `(organizationId, instanceId)` pair will be rejected for at least one hour.
 
 **JWT validation depends on CSA public keys in S3.** The `csa.jwt.s3Host` bucket must be reachable at startup and at validation time. Key-fetch failures will cause 401s for all requests. In local development, use `csa-public-key-store-development`.
 

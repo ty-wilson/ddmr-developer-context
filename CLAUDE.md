@@ -19,6 +19,7 @@ All services below participate in the Blueprints system (`system: blueprints` in
 - **ddmr-authorizer-tenant** — API gateway authorizer: resolves JWT claims → tenant ID via DynamoDB lookup.
 
 ### Ocean Team
+- **spring-m2m-authentication** — Spring Boot autoconfiguration library for M2M JWT auth. Servlet-only.
 - **blueprint-management-service** — Blueprint CRUD, component orchestration. PostgreSQL + Pulsar async deploys.
 - **blueprint-components-registry-service** — Component library catalog: fragment names, types, icons.
 - **blueprint-component-declarations-service** — Declarations fragment metadata for the component registry.
@@ -33,7 +34,7 @@ All services below participate in the Blueprints system (`system: blueprints` in
 
 ### Other Teams
 - **tenants-odin** (Angry Cockroaches) — Tenant management service. DynamoDB.
-- **device-declaration-reporting-service** (Jabberwocky) — Reporting backend for declaration status per device. Early development.
+- **device-declaration-reporting-service** (Jabberwocky) — Reporting backend for declaration status per device.
 - **micro-frontend-hub** — Nx + pnpm monorepo: all MFE apps (declarations, config-profiles, JSFG, etc.)
 - **json-schema-form-generator** — Standalone repo for the JSFG component.
 
@@ -76,18 +77,18 @@ All services below participate in the Blueprints system (`system: blueprints` in
 
 IMPORTANT: When answering questions about cross-service concerns, do NOT guess or infer from partial information. Read the relevant doc below BEFORE answering. These docs contain verified information about service interactions, event consumers, API contracts, and infrastructure that cannot be reliably inferred from a single repo's code.
 
-- **HTTP calls between services, Tyk gateway, API contracts** → read `docs/api-layer.md`
-- **Pulsar events, topic routing, event schemas** → read `docs/event-layer.md`
-- **Authentication, JWT sidecar, tenant resolution** → read `docs/auth-and-tenancy.md`
-- **DynamoDB table designs, GSIs, key patterns** → read `docs/database.md`
-- **Test repos, component/system/perf/contract testing** → read `docs/testing.md`
-- **Grafana dashboards, metrics, logging, alerting** → read `docs/observability.md`
-- **Deployments, ArgoCD, shared values, release flow** → read `docs/cicd-pipeline.md`
-- **Terraform, AWS accounts, regions, IAM** → read `docs/infrastructure.md`
-- **Helm charts, values layering, pod topology, Backstage** → read `docs/kubernetes.md`
-- **Shared client libraries, messaging client, Gradle plugin** → read `docs/shared-libraries.md`
-- **Micro-frontends, schema pipeline, shell integration** → read `docs/frontend.md`
-- **Internals of a specific service** (data model, API details, design decisions) → read `services/<service-name>.md`
+- **HTTP calls between services, Tyk gateway, API contracts** → read `../ddmr-developer-context/docs/api-layer.md`
+- **Pulsar events, topic routing, event schemas** → read `../ddmr-developer-context/docs/event-layer.md`
+- **Authentication, JWT sidecar, tenant resolution** → read `../ddmr-developer-context/docs/auth-and-tenancy.md`
+- **DynamoDB table designs, GSIs, key patterns** → read `../ddmr-developer-context/docs/database.md`
+- **Test repos, component/system/perf/contract testing** → read `../ddmr-developer-context/docs/testing.md`
+- **Grafana dashboards, metrics, logging, alerting** → read `../ddmr-developer-context/docs/observability.md`
+- **Deployments, ArgoCD, shared values, release flow** → read `../ddmr-developer-context/docs/cicd-pipeline.md`
+- **Terraform, AWS accounts, regions, IAM** → read `../ddmr-developer-context/docs/infrastructure.md`
+- **Helm charts, values layering, pod topology, Backstage** → read `../ddmr-developer-context/docs/kubernetes.md`
+- **Shared client libraries, messaging client, Gradle plugin** → read `../ddmr-developer-context/docs/shared-libraries.md`
+- **Micro-frontends, schema pipeline, shell integration** → read `../ddmr-developer-context/docs/frontend.md`
+- **Internals of a specific service** (data model, API details, design decisions) → read `../ddmr-developer-context/services/<service-name>.md`
 
 **Accuracy note:** These docs are point-in-time snapshots. For important decisions, verify claims against the actual code — treat these as orientation, not source of truth.
 

@@ -130,7 +130,7 @@ Junction table linking a `LimitedFragment` to a `tenantId` string. Populated whe
 
 **Limited fragment visibility requires an explicit sync per tenant.** A `LimitedFragment` is only visible to a tenant after a `SyncFragmentsEvent` is processed for that tenant+component pair. Simply enabling the fragment in the component's service does not automatically make it appear — the Pulsar event (or an actuator call) must fire first.
 
-**`AvailableFragmentsSyncFailedException` is partially suppressed.** When `syncLimitedFragments` encounters fragment identifiers reported as available by the component service but not yet present in the registry, it records the failure but continues saving the known-good relations. The TODO comment in `FragmentsUpdater` notes that the metric recording for this failure path is currently disabled pending OCEAN-219.
+**`AvailableFragmentsSyncFailedException` is partially suppressed.** When `syncLimitedFragments` encounters fragment identifiers reported as available by the component service but not present in the registry, it records the failure but continues saving the known-good relations. Metric recording for this failure path is disabled in `FragmentsUpdater`.
 
 **Supported OS filtering is product-driven.** The OS families shown for a component or fragment are intersected with the set configured in `ProductCapabilitiesProperties` for the tenant's product (`PRO` or `SCHOOL`). A fragment that lists `macOS` support will not show that OS to a SCHOOL tenant if `SCHOOL` is not configured to support macOS.
 

@@ -1,6 +1,6 @@
 # Auth And Tenancy
 
-Last reviewed: 2026-04-13
+Last reviewed: 2026-04-14
 
 ## Overview
 
@@ -9,7 +9,7 @@ DDmR services use two ingress mechanisms, and traffic does not always pass throu
 - **Tyk API Gateway (M2M path):** All M2M service-to-service calls route through Tyk, which forwards to the `ddmr-jwt-sidecar` on port 7070. The sidecar validates the M2M JWT and injects HTTP headers (primarily `X-TenantId`) before proxying to the application on port 8080.
 - **HAProxy Ingress (CSA/legacy path):** Some services (notably DSS) define a separate HAProxy-based Kubernetes ingress that routes directly to the application on port 8080, **bypassing the sidecar**. Authentication is handled by the `ddmr-authorizer-tenant` via HAProxy's `auth-url` annotation — the authorizer validates the CSA JWT and returns `X-TenantId`, which HAProxy injects into the forwarded request.
 
-Services read `X-TenantId` regardless of which path delivered it. The `spring-m2m-authentication` library handles M2M JWT validation for services migrating away from the sidecar.
+Services read `X-TenantId` regardless of which path delivered it. The `spring-m2m-authentication` library provides in-process M2M JWT validation as an alternative to the sidecar.
 
 ---
 
@@ -30,13 +30,11 @@ The filter (`JwtProxyFilter`) processes every incoming request:
 
 ### Deployment
 
-The sidecar is conditionally included in the Helm deployment template. In `scoping-engine/helm/scoping-engine/templates/deployment.yaml`, if `.Values.auth` is set a second container named `auth` is added to the pod. The image is taken from `auth.repo`/`auth.tag` in `values.yaml`. The MICRONAUT_ENVIRONMENTS variable selects the environment-specific TOML config inside the sidecar image.
-
-Current image tag in scoping-engine `values.yaml`: `MAIN.2026-03-20.62054` from ECR `359585083818.dkr.ecr.us-east-1.amazonaws.com/jamf/ga/ddm/jwt`.
+The sidecar is conditionally included in the Helm deployment template. In `scoping-engine/helm/scoping-engine/templates/deployment.yaml`, if `.Values.auth` is set a second container named `auth` is added to the pod. The image is taken from `auth.repo`/`auth.tag` in `values.yaml`. The MICRONAUT_ENVIRONMENTS variable selects the environment-specific TOML config inside the sidecar image. The ECR repo is `jamf/ga/ddm/jwt`.
 
 ### Auth Type Support
 
-`JwtProxySignatures` maps JWKS URLs to token type (CSA or M2M). The sidecar supports up to four JWKS endpoints simultaneously:
+`JwtProxySignatures` maps JWKS URLs to token type (CSA or M2M). The sidecar supports multiple JWKS endpoints simultaneously:
 
 - `m2m.jwksInternal` — internal M2M (required)
 - `m2m.jwksExternal` — external M2M (optional)

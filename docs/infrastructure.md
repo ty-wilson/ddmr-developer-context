@@ -16,11 +16,11 @@ This repo owns the canonical table-definition YAML files and IAM policy JSON fil
 
 ### ddmr-infrastructure (newer, OpenTofu + GitHub Actions + HC)
 `github.com/jamf/ddmr-infrastructure` was introduced to manage the **High Compliance (HC)** AWS account and serves as the template for new provisioning going forward. It uses:
-- **OpenTofu 1.9.0** (binary: `tofu`) with Terragrunt 0.80.4
+- **OpenTofu** (binary: `tofu`) with Terragrunt
 - **GitHub Actions** → Highway-to-Prod webhook → Argo for deployment
 - A strict directory hierarchy: `infrastructure/aws/{partition}/{env}/{account_name}_{account_id}/{region}/{resource}/terragrunt.hcl`
 
-Currently `commercial/` contains two scaffold environments — `sbox` and `stage` — both with placeholder account IDs (`012345678901`); only the `hc/` partition has real provisioned infrastructure.
+The `commercial/` partition contains scaffold environments (`sbox`, `stage`) with placeholder account IDs; the `hc/` partition has real provisioned infrastructure.
 
 When working on HC resources, use this repo. For commercial-environment changes (dev/sandbox/staging/production) use `ddmr-terraform`.
 
@@ -65,7 +65,7 @@ State backend buckets (one per environment/region) are managed outside these rep
 
 ### IAM Roles
 
-Each service gets an OIDC-assumable IAM role so its Kubernetes pod can access AWS resources without long-lived credentials. Roles are created using `terraform-aws-modules/terraform-aws-iam//modules/iam-assumable-role-with-oidc` (v5.20.0).
+Each service gets an OIDC-assumable IAM role so its Kubernetes pod can access AWS resources without long-lived credentials. Roles are created using `terraform-aws-modules/terraform-aws-iam//modules/iam-assumable-role-with-oidc`.
 
 Services with IAM roles in staging (ddmr-terraform):
 - `declaration-service`
@@ -119,7 +119,7 @@ The pipeline is entirely serverless and EventBridge-orchestrated:
 3. Three downstream Lambdas run in parallel: Java enhancements, archival, and translations.
 4. An internal ALB-backed Lambda (`path-mapping`) serves schemas at `{env}.mdm-schema.jamf.build`.
 
-Key resources: EFS share, ALB, S3 buckets (JSON schemas, UI schemas, translations), EventBridge rules, Lambda Layers (git 2.40.1, git-node 3.30.0, yaml-node 4.1.1).
+Key resources: EFS share, ALB, S3 buckets (JSON schemas, UI schemas, translations), EventBridge rules, Lambda Layers (git, git-node, yaml-node).
 
 | Environment | Account ID   | Region(s)                             | Domain                          |
 |-------------|--------------|---------------------------------------|---------------------------------|

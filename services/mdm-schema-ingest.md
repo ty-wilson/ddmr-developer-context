@@ -33,7 +33,7 @@ A Parameter Store `Create`/`Update` event fires an EventBridge rule, which invok
 1. Reads the current version from Parameter Store and locates the corresponding EFS snapshot directory.
 2. Iterates every `.yaml` file in the versioned EFS snapshot directory recursively (profiles under `mdm/profiles/` have full support; other MDM component types are best-effort).
 3. Converts each YAML schema to JSON Schema using `js-yaml` plus custom mapping logic in `schema-transformation.ts` and `subkeys-transformation.ts`.
-4. Clones `mdm-jamf-schema` (a private GitHub repo) to Lambda `/tmp` using a GitHub App (app ID `1087011`, installation `58361391`, private key from Parameter Store). For each generated schema, looks up the corresponding file at the same relative path (e.g. `mdm/profiles/com.apple.wifi.managed.json`) and deep-merges any Jamf-specific metadata (sensitive flags, validation rules, business metadata) into the JSON Schema. Clones the jamf schema repo once per invocation; failure to clone aborts the entire transformation.
+4. Clones `mdm-jamf-schema` (a private GitHub repo) to Lambda `/tmp` using a GitHub App (private key from Parameter Store). For each generated schema, looks up the corresponding file at the same relative path (e.g. `mdm/profiles/com.apple.wifi.managed.json`) and deep-merges any Jamf-specific metadata (sensitive flags, validation rules, business metadata) into the JSON Schema. Clones the jamf schema repo once per invocation; failure to clone aborts the entire transformation.
 5. Uploads all enhanced schemas to the JSON Schema S3 bucket under `device-management/{version}/mdm/profiles/{payload-type}.json`.
 6. Deletes the versioned EFS snapshot directory.
 7. Emits a `custom.transformation-lambda` event to EventBridge to fan out to the three downstream lambdas.
@@ -66,7 +66,7 @@ The `mdm-ui-schema` repo (`device-management/mdm/profiles/`) holds manually cura
 
 ## Serving Layer (ALB + Path-Mapping Lambda)
 
-A public-certificate, HTTPS-only internal ALB (`mdm-schema-load-balancer`) sits behind a Route 53 A record. Dev and stage use `api.{env}.mdm-schema.jamf.build`; prod uses per-region subdomains under `mdm-schema.platform.jamfapps.io` (e.g. `use2.mdm-schema.platform.jamfapps.io`). Access is restricted to CloudWAN trust CIDRs and any explicitly configured CIDR blocks; there is no public internet access. The ALB forwards all traffic to the `path-mapping` Lambda (Node.js 24.x), which translates URL paths to S3 `GetObject` calls.
+A public-certificate, HTTPS-only internal ALB (`mdm-schema-load-balancer`) sits behind a Route 53 A record. Dev and stage use `api.{env}.mdm-schema.jamf.build`; prod uses per-region subdomains under `mdm-schema.platform.jamfapps.io` (e.g. `use2.mdm-schema.platform.jamfapps.io`). Access is restricted to CloudWAN trust CIDRs and any explicitly configured CIDR blocks; there is no public internet access. The ALB forwards all traffic to the `path-mapping` Lambda (Node.js), which translates URL paths to S3 `GetObject` calls.
 
 **URL patterns handled by the path-mapping Lambda:**
 

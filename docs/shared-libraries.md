@@ -1,6 +1,6 @@
 # Shared Libraries
 
-Last reviewed: 2026-04-13
+Last reviewed: 2026-04-14
 
 ## spring-m2m-authentication
 
@@ -11,14 +11,16 @@ Owner: Ocean team
 Spring Boot autoconfiguration library for M2M JWT authentication. **Servlet-only** — gated by `@ConditionalOnWebApplication(type = SERVLET)`, does not activate in WebFlux applications. Provides inbound JWT validation (`SecurityFilterChain` with OAuth2 resource server), outbound M2M token acquisition (OAuth2 client credentials flow), and principal resolution from JWT claims. The `M2MPrincipal` types and `M2MTokenConverter` are framework-agnostic and can be used as dependencies in reactive services.
 
 ### Key components
-- `M2MPrincipal` (sealed) with four subtypes: `M2MTenantPrincipal`, `M2MEnvironmentPrincipal`, `M2MOrganizationPrincipal`, `M2MRootPrincipal` — selected based on JWT claims (`https://www.jamf.com/tenant`, `/environment`, `/organization`)
+- `M2MPrincipal` (sealed) with four subtypes: `M2MTenantPrincipal`, `M2MEnvironmentPrincipal`, `M2MOrganizationPrincipal`, `M2MRootPrincipal` — selected based on JWT claims (`https://www.jamf.com/tenant`, `/environment`, `/organization`). Each principal carries an optional `M2MActor` (from the `act` JWT claim) for actor token delegation.
+- `M2MPrincipalType` enum (ROOT, TENANT, ENVIRONMENT, ORGANIZATION) — used by `M2MAuthorizationManager` for type-safe authorization checks. Global default via `jamf.platform.m2m.allowed-principal-types` (defaults to `[TENANT]`), per-path overrides via `jamf.platform.m2m.restricted-paths[]`.
 - `M2MAccessTokenProvider` — programmatic M2M token acquisition for outbound service-to-service calls
 - `@TenantId`, `@EnvironmentId`, `@OrganizationId` — controller parameter annotations that resolve IDs from the current principal
 - `DeclarationClientAuthAutoConfiguration` — auto-registers DSS client auth when `declaration-client-api` is on the classpath
-- `ApiGateway` enum — resolves `(deployment, region)` to JWKS/issuer URIs for each environment
+- `ApiGateway` enum — resolves `(Deployment, Region)` to gateway hostnames; `M2MConfigurationInfo` builds issuer/token/JWKS URIs from those hosts. Supports multiple trusted issuers per gateway (e.g., STAGE_US trusts two hosts).
+- `M2MClientAutoConfiguration` — outbound OAuth2 client credentials flow. Configured via `jamf.platform.m2m.client.*` (`clientId`, `clientSecret`, `scope`). Automatically selects the right client registration (with tenant/environment/organization scope) based on the current `M2MPrincipal` in the security context.
 
 ### Configuration
-Properties under `jamf.platform.*`. Authentication can be disabled (`jamf.platform.m2m.authentication-enabled=false`) for local development, falling back to header-based principal resolution from `X-TenantId`/`X-Environment-Id`/`X-Organization-Id` headers. Intended as the in-process replacement for the `ddmr-jwt-sidecar`.
+Properties under `jamf.platform.*`. Authentication can be disabled (`jamf.platform.m2m.authentication-enabled=false`) for local development, falling back to header-based principal resolution via `M2MPrincipalHeaderFilter` (reads `X-Tenant-Id`/`X-TenantId`/`tenantId`, `X-Environment-Id`, `X-Organization-Id`, `X-Actor-Subject` headers). When `jamf.platform.m2m.autoconfigure=true`, uses OIDC discovery instead of constructing URIs from gateway hosts.
 
 ---
 
