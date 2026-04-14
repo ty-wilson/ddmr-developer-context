@@ -94,11 +94,13 @@ rm ~/Projects/DDmR/CLAUDE.md   # removes the symlink only, not the file it point
 
 ## Keeping Docs Updated
 
-When you discover new or incorrect architectural information while working in any DDmR repo, Claude can update these docs directly. The Layer 0 CLAUDE.md instructs Claude to read the update instructions at `.claude/skills/update-context/SKILL.md` when it detects stale information or when you ask it to update the docs.
+When you discover new or incorrect architectural information while working in any DDmR repo, Claude can update these docs directly using the `/update-context` skill.
+
+The skill is installed globally at `~/.claude/skills/update-context/SKILL.md`, so it's available from any repo — not just this one. The setup skill in this repo (`.claude/skills/setup/`) can install it for you, or you can copy it manually.
 
 The workflow:
 1. You're working in `scoping-engine` and discover the event-layer doc is missing a new consumer
-2. Tell Claude "update the context docs" — it reads the update skill, finds this repo, and edits the relevant doc
+2. Tell Claude "update the context docs" or `/update-context` — it finds this repo and edits the relevant doc
 3. You review the change, commit, and PR
 
 ## Contributing

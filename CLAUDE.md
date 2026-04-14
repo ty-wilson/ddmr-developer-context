@@ -1,3 +1,9 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+This file is symlinked to the DDmR parent directory so it auto-loads in every sibling repo session. Keep under 100 lines. Docs-only repo — no build/lint/test commands. Line limits: this file <100, `docs/*.md` 100-200, `services/*.md` <200. Only document what's verified in code; update `Last reviewed` dates when verifying. Auto-sync scripts in `scripts/`; `setup` skill in `.claude/skills/`; `update-context` skill is installed globally (`~/.claude/skills/update-context/`).
+
 # Blueprints Platform — Service Map
 
 All services below participate in the Blueprints system (`system: blueprints` in Backstage). Team ownership is noted per service.
@@ -85,4 +91,4 @@ IMPORTANT: When answering questions about cross-service concerns, do NOT guess o
 
 **Accuracy note:** These docs are point-in-time snapshots. For important decisions, verify claims against the actual code — treat these as orientation, not source of truth.
 
-If you discover that information in these docs is outdated or incorrect based on what you observe in the code, flag it to the user. To update the docs, read the instructions at `ddmr-developer-context/.claude/skills/update-context/SKILL.md` (sibling of the repo you're in).
+If you discover that information in these docs is outdated or incorrect based on what you observe in the code, flag it to the user. To update the docs, use the `/update-context` skill (installed globally at `~/.claude/skills/update-context/SKILL.md`).

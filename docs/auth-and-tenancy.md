@@ -1,10 +1,15 @@
 # Auth And Tenancy
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-13
 
 ## Overview
 
-Every DDmR service that accepts external requests sits behind the `ddmr-jwt-sidecar`. The sidecar validates JWTs and injects HTTP headers before the request ever reaches the application. Services read those headers—primarily `X-TenantId`—to identify the tenant. Internal service-to-service calls use M2M tokens (via `robocop`). CSA tokens are used when the calling party is an end user.
+DDmR services use two ingress mechanisms, and traffic does not always pass through the sidecar:
+
+- **Tyk API Gateway (M2M path):** All M2M service-to-service calls route through Tyk, which forwards to the `ddmr-jwt-sidecar` on port 7070. The sidecar validates the M2M JWT and injects HTTP headers (primarily `X-TenantId`) before proxying to the application on port 8080.
+- **HAProxy Ingress (CSA/legacy path):** Some services (notably DSS) define a separate HAProxy-based Kubernetes ingress that routes directly to the application on port 8080, **bypassing the sidecar**. Authentication is handled by the `ddmr-authorizer-tenant` via HAProxy's `auth-url` annotation — the authorizer validates the CSA JWT and returns `X-TenantId`, which HAProxy injects into the forwarded request.
+
+Services read `X-TenantId` regardless of which path delivered it. The `spring-m2m-authentication` library handles M2M JWT validation for services migrating away from the sidecar.
 
 ---
 
@@ -70,20 +75,21 @@ This tells the sidecar to map the CSA `tenant_id` claim or the M2M `https://www.
 
 ## Tenant Resolution Flow (CSA path)
 
-For user-facing requests (CSA tokens), the `ddmr-authorizer-tenant` service resolves an opaque customer/org identity into a stable UUID tenant ID before the request reaches downstream services.
+For user-facing requests (CSA tokens), the `ddmr-authorizer-tenant` service resolves an opaque customer/org identity into a stable UUID tenant ID before the request reaches downstream services. The authorizer is invoked as a subrequest by HAProxy (via `auth-url` annotation), not as an inline proxy.
 
 ```
-Client
-  -> API Gateway
-     -> ddmr-authorizer-tenant (/authorize)
-        * validates CSA JWT (Spring Security OAuth2 resource server)
-        * checks scope: all-basic-cloud-services:allow (only when rejectRequestInStageHack is enabled)
-        * reads sub (organizationId) and x-customer-id header
-        * looks up / generates UUID tenant ID in DynamoDB (tenant-authorizer table)
-        * responds with X-TenantId and X-Auth-Src headers
-     -> downstream service pod
-        -> sidecar (port 7070) -- validates M2M or CSA JWT, injects x-tenantid header
-        -> service (port 8080) -- reads X-TenantId from AbstractApiRequest
+CSA path (e.g. DSS with ingress.legacyEnabled):
+  Client -> HAProxy Ingress ({release}-authorized, path /api)
+         -> HAProxy calls tenant-authorizer-svc:8080/authorize as auth subrequest
+            * validates CSA JWT, resolves tenant in DynamoDB
+            * returns X-TenantId and X-Auth-Src headers
+         -> HAProxy injects response headers, forwards to service port 8080 (no sidecar)
+         -> service reads X-TenantId from request headers
+
+M2M path (all services via Tyk):
+  Service A -> Tyk Gateway (strips X-TenantId, validates M2M JWT)
+            -> service pod port 7070 (sidecar validates JWT, extracts X-TenantId from claim)
+            -> service port 8080 reads X-TenantId
 ```
 
 The `ddmr-authorizer-tenant` is a Spring Boot WebFlux service acting as a Lambda-style authorizer. It:
@@ -174,7 +180,7 @@ Key differences from commercial stage:
 
 | Header | Source | Required | Behavior if absent |
 |---|---|---|---|
-| `X-TenantId` | JWT sidecar (from JWT claim) | Yes | `AbstractApiRequest` throws 401 |
+| `X-TenantId` | JWT sidecar (M2M path) or tenant-authorizer via HAProxy (CSA path) | Yes | `AbstractApiRequest` throws 401 |
 | `X-EnvironmentId` | JWT sidecar (from JWT claim) | No | `tenantEnv` is `null` |
-| `X-Auth-Src` | `ddmr-authorizer-tenant` | No | Informational only, not read by scoping-engine |
+| `X-Auth-Src` | `ddmr-authorizer-tenant` (CSA path only) | No | Informational only, not read by scoping-engine |
 | `X-B3-TraceId` / `X-B3-SpanId` | Tracing infrastructure | No | MDC context left unpopulated |

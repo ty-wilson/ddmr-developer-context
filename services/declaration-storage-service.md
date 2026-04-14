@@ -1,6 +1,6 @@
 # Declaration Storage Service
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-13
 
 > **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
 
@@ -8,7 +8,7 @@ Last reviewed: 2026-04-07
 
 ## Summary
 
-Declaration Storage Service (DSS) is the system of record for Apple Declarative Device Management (DDM) declarations and their device assignments. It owns two things: declaration payloads (the JSON content, group, type, and a SHA-256 `serverToken` that Apple devices use to detect changes) and assignment records that map a `(tenant, device, channel)` tuple to a declaration under a named identifier. DSS exposes both a product-facing API (used by Jamf services to manage declarations and assignments) and an MDM-facing API (used by the MDM layer to satisfy Apple DDM check-in requests). When assignments change, DSS publishes a Pulsar event so downstream consumers (e.g., the MDM layer) can trigger device sync. The service is tagged `pii` and `nist` and operates in the `blueprints` system at service tier 2.
+Declaration Storage Service (DSS) is a **Spring Boot WebFlux (Kotlin coroutines)** service and the system of record for Apple Declarative Device Management (DDM) declarations and their device assignments. It owns two things: declaration payloads (the JSON content, group, type, and a SHA-256 `serverToken` that Apple devices use to detect changes) and assignment records that map a `(tenant, device, channel)` tuple to a declaration under a named identifier. DSS exposes both a product-facing API (used by Jamf services to manage declarations and assignments) and an MDM-facing API (used by the MDM layer to satisfy Apple DDM check-in requests). When assignments change, DSS publishes a Pulsar event so downstream consumers (e.g., the MDM layer) can trigger device sync. The service is tagged `pii` and `nist` and operates in the `blueprints` system at service tier 2.
 
 ---
 
@@ -31,7 +31,7 @@ These are the current non-deprecated endpoints. Prefer v2 over v1.
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v2/assignment/device/{device}/{channel}` | Apply/remove/replace assignments for one device. Accepts `applyIdentifiers` (map of identifier → declaration ID), `removeIdentifiers` (set of identifiers), `removeNotApplied` (bool), and `tag`. Returns `200` with error detail for any invalid declarations or tag/tenant mismatches instead of a hard failure. |
-| `GET` | `/api/v2/assignment/device/{device}/{channel}` | Stream all assignments for a device as NDJSON. Requires `?tags=<tag>` (repeatable; use blank string for untagged) or `?allTags=true`. |
+| `GET` | `/api/v2/assignment/device/{device}/{channel}` | Stream all assignments for a device as NDJSON. Requires `?tags=<tag>` (repeatable; use blank string for untagged) or `?allTags=true`. Response includes `declarationId`, `identifierOnDevice`, and `tag` (empty string if untagged). Optional `?includeServerToken` adds the declaration's `serverToken` to each result. |
 | `GET` | `/api/v2/assignment/declaration/{id}` | Stream all device assignments for a declaration as NDJSON. Same `tags`/`allTags` query parameter requirement. |
 | `DELETE` | `/api/v2/assignment/device/{device}/{channel}` | Delete all assignments for a device matching the given `?tags` (required, blank string for untagged). |
 
@@ -154,3 +154,15 @@ Note: Most operations in the client target v2 endpoints. Two exceptions: `remove
 **Assignment modification failures are non-fatal in v2.** `POST /api/v2/assignment/device/{device}/{channel}` returns `200` even when some assignments could not be applied (wrong tag/tenant mismatch). Check the `errors` array in the response body.
 
 **Contract tests via Pact.** DSS maintains consumer-driven contract tests in `contract-test/`. If you are adding a new operation or changing a response shape, verify the Pact contracts still pass before merging.
+
+---
+
+## Ingress Architecture
+
+DSS is unique among DDmR services in defining a dual-ingress pattern (gated by `ingress.legacyEnabled: true`, the default). Helm templates in `helm/declaration-storage-service/templates/`:
+
+- **`{release}-authorized`** — CSA/legacy path. Routes `/api` (Prefix) to port 8080 (direct to app, **bypasses sidecar**). Uses `haproxy-ingress.github.io/auth-url: svc://tenant-authorizer-svc:8080/authorize` — the authorizer validates the CSA JWT and returns `X-TenantId`, which HAProxy injects before forwarding.
+- **`{release}-open`** — Unauthenticated. Routes `/api/v1` (Exact) to port 8080 for the connectivity check endpoint (`HEAD /api/v1`).
+- **`{release}-fake-gateway`** (sandbox only, `ingress-sbox-m2m.yaml`) — Routes to port 7070 (sidecar) when `auth.asIngress` is set. Used in environments without a Tyk gateway.
+
+The Kubernetes Service exposes port 8080 (`http`) unconditionally and port 7070 (`http-authed`) conditionally when `.Values.auth` is set. Production M2M traffic arrives via Tyk, which routes to port 7070 (sidecar). Both ports are reachable from within the cluster — port 8080 already trusts `X-TenantId` headers today with no additional network restriction.

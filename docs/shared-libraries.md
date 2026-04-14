@@ -1,6 +1,26 @@
 # Shared Libraries
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-13
+
+## spring-m2m-authentication
+
+Repository: `spring-m2m-authentication`
+Artifact: `com.jamf.platform.m2m:spring-m2m-authentication`
+Owner: Ocean team
+
+Spring Boot autoconfiguration library for M2M JWT authentication. **Servlet-only** — gated by `@ConditionalOnWebApplication(type = SERVLET)`, does not activate in WebFlux applications. Provides inbound JWT validation (`SecurityFilterChain` with OAuth2 resource server), outbound M2M token acquisition (OAuth2 client credentials flow), and principal resolution from JWT claims. The `M2MPrincipal` types and `M2MTokenConverter` are framework-agnostic and can be used as dependencies in reactive services.
+
+### Key components
+- `M2MPrincipal` (sealed) with four subtypes: `M2MTenantPrincipal`, `M2MEnvironmentPrincipal`, `M2MOrganizationPrincipal`, `M2MRootPrincipal` — selected based on JWT claims (`https://www.jamf.com/tenant`, `/environment`, `/organization`)
+- `M2MAccessTokenProvider` — programmatic M2M token acquisition for outbound service-to-service calls
+- `@TenantId`, `@EnvironmentId`, `@OrganizationId` — controller parameter annotations that resolve IDs from the current principal
+- `DeclarationClientAuthAutoConfiguration` — auto-registers DSS client auth when `declaration-client-api` is on the classpath
+- `ApiGateway` enum — resolves `(deployment, region)` to JWKS/issuer URIs for each environment
+
+### Configuration
+Properties under `jamf.platform.*`. Authentication can be disabled (`jamf.platform.m2m.authentication-enabled=false`) for local development, falling back to header-based principal resolution from `X-TenantId`/`X-Environment-Id`/`X-Organization-Id` headers. Intended as the in-process replacement for the `ddmr-jwt-sidecar`.
+
+---
 
 ## platform-messaging-client-java
 
