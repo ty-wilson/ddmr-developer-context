@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-This file is symlinked to the DDmR parent directory so it auto-loads in every sibling repo session. Keep under 100 lines. Docs-only repo — no build/lint/test commands. Line limits: this file <100, `docs/*.md` 100-200, `services/*.md` <200. Only document what's verified in code; update `Last reviewed` dates when verifying. Auto-sync scripts in `scripts/`; `setup` skill in `.claude/skills/`; `update-context` skill is installed globally (`~/.claude/skills/update-context/`).
+This file is symlinked to the DDmR parent directory so it auto-loads in every sibling repo session. Keep under 100 lines. Docs-only repo — no build/lint/test commands. Line limits: this file <100, `docs/*.md` 100-300, `services/*.md` <200. Only document what's verified in code; update `Last reviewed` dates when verifying. Auto-sync scripts in `scripts/`; `setup` skill in `.claude/skills/`; `update-context` skill is installed globally (`~/.claude/skills/update-context/`).
 
 # Blueprints Platform — Service Map
 
@@ -34,6 +34,7 @@ All services below participate in the Blueprints system (`system: blueprints` in
 
 ### Other Teams
 - **tenants-odin** (Angry Cockroaches) — Tenant management service. DynamoDB.
+- **device-group-inventory-service** (Data Manager) — Platform proxy to Jamf Pro group API. PostgreSQL cache + pass-through. No division data currently.
 - **device-declaration-reporting-service** (Jabberwocky) — Reporting backend for declaration status per device.
 - **micro-frontend-hub** — Nx + pnpm monorepo: all MFE apps (declarations, config-profiles, JSFG, etc.)
 - **json-schema-form-generator** — Standalone repo for the JSFG component.

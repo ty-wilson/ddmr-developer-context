@@ -1,6 +1,6 @@
 # Shared Libraries
 
-Last reviewed: 2026-04-14
+Last reviewed: 2026-04-15
 
 ## spring-m2m-authentication
 
@@ -184,9 +184,7 @@ Gradle plugin that standardizes artifact naming, versioning, ECR image tagging, 
 
 **`containerImage.buildTargetTag()`** — Tag format: `<branch>.<date>.<per-day-count>` (e.g., `MAIN.2023-03-28.1`). `IMAGE_RELEASE_CANDIDATE=true` replaces the branch segment with `RC`, producing the same `RC.<date>.<count>` pattern (e.g., `RC.2023-03-28.1`). Also supports `IMAGE_TAG_OVERRIDE`. When `BUILDS_TODAY` is unavailable the count falls back to seconds since midnight rather than a build counter.
 
-**ECR auth helpers**: `containerImage.cacheEcrAuthorization()` / `cachedEcrUsername()` / `cachedEcrPassword()` — fetch and cache ECR tokens via the AWS SDK. No-op for LOCAL builds by default.
-
-**`containerImage.buildPublicEcrUri("vendor/image", "tag")`** — Constructs a pull URI from the Jamf public ECR (`359585083818.dkr.ecr.us-east-1.amazonaws.com/jamf/public`).
+**ECR auth helpers**: `cacheEcrAuthorization()` / `cachedEcrUsername()` / `cachedEcrPassword()` — fetch and cache ECR tokens. `buildPublicEcrUri("vendor/image", "tag")` constructs pull URIs from Jamf public ECR.
 
 ### JIRA branch shortening
 The plugin trims branch names using configured JIRA markers (default: `["DDM"]`) so that `DDM-123-some-description` becomes `DDM-123` in version strings and image tags.
