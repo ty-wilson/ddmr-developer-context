@@ -1,10 +1,10 @@
 # Event Layer
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-22
 
 ## Overview
 
-DDmR services communicate asynchronously over Apache Pulsar using the `pdd` tenant. All topic definitions are version-controlled in the `event-bus-configuration-topics` repo. The Pulsar broker is shared across the platform, so the `pdd/default/` namespace is considered platform-owned and cannot be changed without broader consultation.
+DDmR services communicate asynchronously over Apache Pulsar using the `pdd` tenant. All topic, namespace, tenant, and subscription definitions are version-controlled in the `event-bus-resources-configuration` repo (which replaced the now-archived `event-bus-configuration-topics` in April 2026). The Pulsar broker is shared across the platform, so the `pdd/default/` namespace is considered platform-owned and cannot be changed without broader consultation.
 
 > **Important:** The `owner` field in `topic.json` identifies who owns the *topic definition*, not who produces messages to it. Jamf Pro Server (jamf-messaging) produces `device-group-changed` and `device-management-channel-changed` even though DDmR owns the topic definition entries.
 
@@ -159,9 +159,15 @@ Scoping Engine uses `@ConfigurationProperties(prefix = "messaging.topics")`. Key
 
 ---
 
-## event-bus-configuration-topics: Where Topic Definitions Live
+## event-bus-resources-configuration: Where Topic Definitions Live
 
-Topic definitions live under `envs/prod/pdd/<namespace>/<topic-name>/topic.json`. Each file declares `name`, `settings` (schema validation + compatibility strategy), `properties` (owner metadata), and `subscriptions` per region. To add a topic: create the directory, add `topic.json` and `readme.md`, open a PR. For `pdd/default/` topics, coordinate with all consuming teams first.
+Topic and subscription definitions live under `configuration/<catalog>/<env>/topics/<tenant>/<namespace>/<topic>/` (catalogs are `platform` and `jpro`; envs are `dev`, `stage`, `sbox`, `prod`). Each topic directory contains `topic.json` (declaring `name`, `settings`, `properties`) and a `subscriptions/<sub-name>/sub.json` file per subscription — subscriptions are no longer nested in the topic file. Resources are applied by the Pulsar Operator via ArgoCD.
+
+To add a topic or subscription: create the directory/files, open a PR. The `run-and-commit.yaml` workflow regenerates `values/service-type-specific/<catalog>/values-<env>.yaml` on Linux/py3.12 and auto-commits back to the branch; `pr-checks.yml` then validates no drift. Note: local regeneration on macOS can produce filesystem-ordering diffs that CI won't accept — let CI regenerate.
+
+### Subscription alerting
+
+Each `sub.json` may include an `alertConfiguration` block. The helm chart (`helm/event-bus-resources-configuration/templates/prometheus-rules.yaml`) emits a `PrometheusRule` per topic with up to four alerts gated on `alertConfiguration.enabled`: `TopicStorageSizeTooHigh` (topic-level), `HighRedeliveryRate`, `SubscriptionUnackedMessages`, `HighSubscriptionBacklog`. To disable an individual alert while keeping others on, use `alertOverrides.<AlertName>.disabled: true` — the override key is `disabled`, not `enabled: false`. Alerts are labeled with the topic's `properties.{team,component,system,domain}`, so `pdd/default/` topics with DDmR ownership route alerts to DDmR even when fired by another team's subscription.
 
 ---
 

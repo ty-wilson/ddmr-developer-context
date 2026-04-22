@@ -1,6 +1,6 @@
 # Testing
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-20
 
 ## Overview
 
@@ -89,7 +89,9 @@ The DSS component tests use a `@SpringBootTest` base class (`DeclarationStorageT
 
 System tests are smoke tests executed against live deployed environments (integration, staging, production). They are stored in `<service>-system-tests` repos.
 
-For `declaration-storage-service-system-tests`, tests are Postman collections (`dss-smoke-test.postman_collection.json`) run with environment files for each target (`Integration`, `Staging`, `Production.use1`, `Production.eu`, `Production.apac`). GitHub Actions workflows trigger them automatically after deployments.
+For `declaration-storage-service-system-tests`, tests are Postman collections under `system-tests/` — `dss-smoke-test.postman_collection.json` (post-deploy smoke check) and `dss-system-test.postman_collection.json` (broader regression suite) — run with environment files for each target (`Integration`, `Staging`, `Sandbox`, `Performance`, `Production.use1`, `Production.eu`, `Production.apac`). GitHub Actions workflows trigger them automatically after deployments.
+
+Both collections exercise **both auth paths** — M2M tokens fetched from robocop AND CSA tokens fetched via the two-hop Auth0 opaque-token → `stage-csa.services.jamfcloud.com/v2/token` flow. CSA-authenticated requests additionally send the `x-customer-id` header. Credentials for the CSA test account are stored in the Postman environment files (non-prod envs use the shared `ddmr.salesforce.test@gmail.com` account).
 
 For `scoping-engine-system-tests`, the repo is a placeholder (README only); system test coverage is provided by the component tests via the `@Tag("system-test")` mechanism and the `systemTest` Gradle task, which runs against a non-containerized environment.
 
