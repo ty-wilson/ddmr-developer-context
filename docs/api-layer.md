@@ -1,6 +1,6 @@
 # API Layer
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-28
 
 ## Overview
 
@@ -77,6 +77,7 @@ Listen paths are what external callers use; the gateway strips the prefix before
 | `scope-eng` | `/scoping` (prod, stage→integration); `/scope-eng-prerelease` (stage→ddmr-stage) | `scoping-engine-svc.ddmr-<env>:7070` | Both |
 | `dss` | `/dss` | `declaration-storage-svc.ddmr-<env>:7070` | Both |
 | `declaration-service` | `/declaration-service` | `declaration-service.ddmr-<env>:7070` (internal); `declaration-service-svc.ddmr-<env>:7070` (external) | Both |
+| `blueprint-components` | `/blueprints/components/{sw-update,declarations,cps,declaration-service,app-service,sls}` | Multiple — `/blueprints/components/declaration-service` targets `declaration-service.ddmr-<env>:7070` with `X-Forwarded-Prefix` header | Internal (UI variant for app-service is external) |
 | `app-declaration-service` | `/app-declaration-service` | `bcads.use2.platform.jamfapps.io` | Internal |
 | `declaration-reporting-service` | `/ddm/report` | `drs.use2.platform.jamfapps.io` | Internal |
 | `blueprint-management` | `/blueprints/management` | `blueprint-management-service.ocean-prod:8080` | Both |
@@ -87,6 +88,17 @@ Listen paths are what external callers use; the gateway strips the prefix before
 | `school-declaration-scoping` | `/school-scoping` | `school-declaration-scoping-service.ocean-prod:8080` | Internal |
 
 Services running as in-cluster pods (scoping-engine, declaration-storage-service, declaration-service) use Kubernetes DNS names. Services that live outside the cluster (e.g., device-inventory, CPS) are referenced by their platform hostname. In stage, `scope-eng` exposes two listen paths: `/scope-eng-prerelease` targets `ddmr-stage` (the latest prerelease build) and `/scoping` targets `ddmr-integration`.
+
+**Dual-product routes:** declaration-service is reachable through two Tyk products at two different listen paths backed by the same pod. Each product has its own SecurityPolicy and therefore its own scope:
+
+| Caller path | Tyk product / scope name | Notes |
+|---|---|---|
+| `/declaration-service/...` | `declaration-service-product` | Direct route. Used by tooling and direct callers. |
+| `/blueprints/components/declaration-service/...` | `blueprint-components-api-product` | Bundle scope shared across `sw-update`, `declarations`, `cps`, `declaration-service`, `app-service`, `sls`. Used by callers (e.g. blueprint-management-service, MFE traffic, the declaration-service component-test suite when run against stable-dev) that traverse the unified blueprint-components surface. |
+
+The two scopes are not interchangeable on a given URL — Tyk's SecurityPolicy is bound to specific ApiDefinitions/listen paths.
+
+Both the gateway and the in-pod `JwtFilter` enforce scope. The pod's `JwtScopeValidator` (`src/main/kotlin/com/jamf/declaration/auth/JwtFilter.kt`) accepts the JWT if it carries **any** of the configured `requiredScopes`. The default set is `{declaration-service-product, blueprint-components-api-product}`, so a request that survives Tyk's path-bound check on either route also satisfies the pod-level check. Pre-PR-#158 (DDMR-1088), `JwtScopeValidator` accepted only a single scope, so traffic via the blueprint-components route would have been rejected by the pod even though Tyk authorized it; PR #158 broadened it to ANY-match.
 
 ---
 

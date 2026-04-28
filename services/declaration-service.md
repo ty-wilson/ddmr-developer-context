@@ -1,6 +1,6 @@
 # Declaration Service
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-28
 
 > **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
 
@@ -108,6 +108,10 @@ The `strict` endpoints use the same shape except declarations omit `payloadKey` 
 **No persistent storage.** declaration-service holds no database of its own. All state lives in DSS. If you need to query or list existing declarations, go to DSS directly.
 
 **Tenant is a UUID string.** `X-TenantId` must be parseable as a `java.util.UUID`. Passing a non-UUID string will cause a 500 at the M2M token fetch, not a 400.
+
+**Two inbound Tyk routes, two different scopes.** Callers can reach the same pod via `/declaration-service/...` (scope `declaration-service-product`) or `/blueprints/components/declaration-service/...` (scope `blueprint-components-api-product`, the unified blueprint-components bundle). The scopes are not interchangeable on a given URL — Tyk's SecurityPolicy is path-bound. The in-pod `JwtFilter` (`src/main/kotlin/com/jamf/declaration/auth/JwtFilter.kt`) also enforces scope via `JwtScopeValidator`, but with ANY-match semantics across the configured `requiredScopes` (default `{declaration-service-product, blueprint-components-api-product}`), so any request that survives Tyk on either route also satisfies the pod check. The `declaration-service-component-tests` repo fetches `blueprint-components-api-product` because stable-dev traffic flows through the blueprint-components path. See `docs/api-layer.md` for the full mapping.
+
+**Sidecar removal in progress (DDMR-1088).** declaration-service is migrating from the `ddmr-jwt-sidecar` pattern to the in-pod `JwtFilter`. After PR #158 (`DDMR-1088 Allow multiple ANY-match scopes for JWT verification`), the in-pod filter is the sole pod-side gatekeeper and accepts both inbound scopes. Other DDmR services still use the sidecar; see `docs/auth-and-tenancy.md`.
 
 ---
 
