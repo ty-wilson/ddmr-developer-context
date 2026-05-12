@@ -1,6 +1,6 @@
 # Auth And Tenancy
 
-Last reviewed: 2026-04-28
+Last reviewed: 2026-05-12
 
 ## Overview
 
@@ -9,7 +9,7 @@ DDmR services use two ingress mechanisms, and traffic does not always pass throu
 - **Tyk API Gateway (M2M path):** All M2M service-to-service calls route through Tyk, which forwards to the `ddmr-jwt-sidecar` on port 7070. The sidecar validates the M2M JWT and injects HTTP headers (primarily `X-TenantId`) before proxying to the application on port 8080.
 - **HAProxy Ingress (CSA/legacy path):** Some services (notably DSS) define a separate HAProxy-based Kubernetes ingress that routes directly to the application on port 8080, **bypassing the sidecar**. Authentication is handled by the `ddmr-authorizer-tenant` via HAProxy's `auth-url` annotation — the authorizer validates the CSA JWT and returns `X-TenantId`, which HAProxy injects into the forwarded request.
 
-Services read `X-TenantId` regardless of which path delivered it. The `spring-m2m-authentication` library provides in-process M2M JWT validation as an alternative to the sidecar; declaration-service uses its own in-pod `JwtFilter` (see "In-Pod JwtFilter (declaration-service)" below). The sidecar is on the way out for declaration-service via DDMR-1088.
+Services read `X-TenantId` regardless of which path delivered it. The `spring-m2m-authentication` library provides in-process M2M JWT validation as an alternative to the sidecar; declaration-service and DSS each ship their own in-pod `JwtFilter` (see "In-Pod JwtFilter" below). The migration off the sidecar started with declaration-service under DDMR-1088 and DSS has since followed; scoping-engine still uses the sidecar.
 
 ---
 
@@ -133,16 +133,19 @@ The tenant must be a valid UUID for Robocop. If the tenant string is not a valid
 
 ---
 
-## In-Pod JwtFilter (declaration-service)
+## In-Pod JwtFilter
 
-declaration-service replaces the sidecar with an in-process Spring WebFlux filter (`com.jamf.declaration.auth.JwtFilter`). DDMR-1088 enabled it and removed the sidecar container. The filter is functionally equivalent to the sidecar's auth step, with a few differences worth noting:
+Both declaration-service and DSS replace the sidecar with an in-process Spring WebFlux filter. The pattern was introduced in declaration-service under DDMR-1088 (`com.jamf.declaration.auth.JwtFilter`) and DSS has since adopted it (`com.jamf.declarationstorage.auth.JwtFilter`). scoping-engine still uses the sidecar.
+
+Both filters share these properties:
 
 - **Multiple issuers, one filter.** `JwtProperties.issuers` is a list of `JwtIssuerProperties`; each entry has its own `issuer`, optional `jwksTemplate`, and `requiredScopes`. The filter looks up the decoder by the inbound JWT's `iss` claim. Unknown issuer → 401 ("Unsupported JWT issuer").
-- **Scope check is ANY-match across a set.** `JwtScopeValidator(requiredScopes: Set<String>)` parses the `scope` claim (space- or comma-separated) and returns success if `requiredScopes.any { s -> scopes.contains(s) }`. The default `requiredScopes` is `{declaration-service-product, blueprint-components-api-product}`, the two Tyk products that route to the same pod. This is what PR #158 added — pre-#158 it was a single-scope check, which would have rejected traffic via `/blueprints/components/declaration-service/...` once the sidecar was gone.
+- **Scope check is ANY-match across a set.** `JwtScopeValidator` parses the `scope` claim (space- or comma-separated) and succeeds if any required scope is present. declaration-service's default `requiredScopes` is `{declaration-service-product, blueprint-components-api-product}` (the two Tyk products that route to the same pod, broadened by PR #158).
 - **Open endpoints are hardcoded** to `HEAD /api/v1` (connectivity check) and the actuator base path. Less flexible than the sidecar's configurable `open` list. The filter sets an `OPEN_REQUEST_ATTR` exchange attribute so downstream code can tell whether the request was authenticated.
-- **Tenant is passed via WebFlux exchange attributes, not request headers.** When auth is enabled, the filter reads `https://www.jamf.com/tenant.tenantId` (and `.environmentId`) from the verified JWT and stores them as `exchange.attributes[TENANT_HEADER]` / `exchange.attributes[ENVIRONMENT_HEADER]`. `AbstractApiRequest.grabTenantHeader` reads from those attributes, not from inbound HTTP headers, throwing 401 if absent. When `authEnabled` is false (test/local), the same attributes are populated from inbound `X-TenantId` / `X-EnvironmentId` headers instead.
+- **Tenant is passed via WebFlux exchange attributes, not request headers.** When `authEnabled` is true, the filter reads `https://www.jamf.com/tenant.tenantId` (and `.environmentId`) from the verified JWT and stores them as `exchange.attributes[TENANT_HEADER]` / `exchange.attributes[ENVIRONMENT_HEADER]`. `AbstractApiRequest` reads from those attributes, throwing 401 if absent. When `authEnabled` is false (test/local), the same attributes are populated from inbound `X-TenantId` / `X-EnvironmentId` headers instead.
+- **CSA path.** DSS's filter additionally resolves CSA tokens via `CsaAuthResolver` / `CsaTenantResolver`, which looks up the tenant in the `tenant-authorizer` DynamoDB table. declaration-service is M2M-only.
 
-Other DDmR services (scoping-engine, DSS) still use the sidecar pattern described above. The in-pod filter is the migration target for DDMR-1088 specifically; broader rollout is not yet planned.
+Practical consequence: port 8080 on DSS no longer trusts an inbound `X-TenantId` header in prod — callers must send a Bearer JWT, just as they would via the gateway path. Port-forwarding the pod and sending only `X-TenantId` returns 401 in any environment where `authEnabled` is true.
 
 ---
 

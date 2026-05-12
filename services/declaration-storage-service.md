@@ -1,6 +1,6 @@
 # Declaration Storage Service
 
-Last reviewed: 2026-04-13
+Last reviewed: 2026-05-12
 
 > **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
 
@@ -69,6 +69,8 @@ Single-table design. Table name is configured per environment. Primary key: `pke
 - `declaration_index` (hash: `declaration_key`, projection: ALL) — enables querying all assignments for a given declaration without a full scan
 
 **Payload storage format:** Payloads are always stored with a prefix: `json:` for plaintext, `iron:` for IronCore (BYOK) encrypted. Always strip the prefix before using the value. Encrypted payloads have a companion `payloadEdek` attribute (the encrypted data encryption key).
+
+**Channel strings are not a simple `SYSTEM`/`USER` enum.** The `<channel>` segment of `MDM#<tenant>|<device>|<channel>` is whatever string the caller (typically scoping-engine) wrote. Observed values in stage tables include: `SYSTEM` (legacy generic device channel), `computer` (macOS device channel), `device` and `mobile_device` (iOS/iPadOS device channels), `watch` (Apple Watch), and **per-user UUIDs** for user channels — there is no literal `USER` value. When constructing API calls or Dynamo lookups, do not assume the user-channel string; discover it. The cheapest discovery query is a scan with `begins_with(pkey, "MDM#<tenant>|<device>")` to list every `(channel)` recorded for that device.
 
 **`payloadToken`:** A SHA-256 hex digest over `(payload + type)`. Apple devices compare this token to detect whether a declaration has changed. It is recomputed on any update that changes `payload`, `type`, or `channelReplacement`.
 
@@ -157,12 +159,14 @@ Note: Most operations in the client target v2 endpoints. Two exceptions: `remove
 
 ---
 
-## Ingress Architecture
+## Ingress and Auth
 
-DSS is unique among DDmR services in defining a dual-ingress pattern (gated by `ingress.legacyEnabled: true`, the default). Helm templates in `helm/declaration-storage-service/templates/`:
+DSS has migrated off the JWT sidecar and validates JWTs in-pod via `com.jamf.declarationstorage.auth.JwtFilter` (same pattern declaration-service adopted under DDMR-1088). The filter handles both M2M and CSA tokens: M2M tenant comes from the `https://www.jamf.com/tenant.tenantId` JWT claim, CSA tenant is resolved via `CsaTenantResolver` against the `tenant-authorizer` table.
 
-- **`{release}-authorized`** — CSA/legacy path. Routes `/api` (Prefix) to port 8080 (direct to app, **bypasses sidecar**). Uses `haproxy-ingress.github.io/auth-url: svc://tenant-authorizer-svc:8080/authorize` — the authorizer validates the CSA JWT and returns `X-TenantId`, which HAProxy injects before forwarding.
-- **`{release}-open`** — Unauthenticated. Routes `/api/v1` (Exact) to port 8080 for the connectivity check endpoint (`HEAD /api/v1`).
-- **`{release}-fake-gateway`** (sandbox only, `ingress-sbox-m2m.yaml`) — Routes to port 7070 (sidecar) when `auth.asIngress` is set. Used in environments without a Tyk gateway.
+Helm templates in `helm/declaration-storage-service/templates/` still define a dual-ingress pattern (gated by `ingress.legacyEnabled: true`, the default):
 
-The Kubernetes Service exposes port 8080 (`http`) unconditionally and port 7070 (`http-authed`) conditionally when `.Values.auth` is set. Production M2M traffic arrives via Tyk, which routes to port 7070 (sidecar). Both ports are reachable from within the cluster — port 8080 already trusts `X-TenantId` headers today with no additional network restriction.
+- **`{release}-authorized`** — HAProxy ingress on `/api` (Prefix) → port 8080. Originally used `haproxy-ingress.github.io/auth-url: svc://tenant-authorizer-svc:8080/authorize` to pre-inject `X-TenantId`; with the in-pod filter that pre-injection is no longer the authoritative path — the filter itself validates and resolves the tenant.
+- **`{release}-open`** — Unauthenticated. Routes `/api/v1` (Exact) for the connectivity check (`HEAD /api/v1`).
+- **`{release}-fake-gateway`** (sandbox only) — Routes when `auth.asIngress` is set, for environments without Tyk.
+
+The Kubernetes Service still exposes port 8080 (`http`) unconditionally and 7070 (`http-authed`) conditionally. **In any environment where `authEnabled=true` (prod, stage, hc-stage), port 8080 also requires a Bearer JWT** — it is not a "trust the inbound `X-TenantId` header" path. Port-forwarding for diagnostics requires a real M2M token. The only exception is local/test with `authEnabled=false`, where the filter reads `X-TenantId` directly from headers.
