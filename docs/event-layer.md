@@ -1,6 +1,6 @@
 # Event Layer
 
-Last reviewed: 2026-04-22
+Last reviewed: 2026-05-18
 
 ## Overview
 
@@ -178,3 +178,28 @@ Each `sub.json` may include an `alertConfiguration` block. The helm chart (`helm
 - **All SE listeners use `Key_Shared`.** Per-device ordering is guaranteed as long as the message key is `tenantId + deviceId`. Do not change the key strategy without understanding the ordering implications.
 - **Listeners start disabled.** Never rely on Spring's normal `autoStartup` path for SE listeners — `PulsarWatchdog` owns their lifecycle.
 - **Topic definition owner ≠ producer.** The `properties.owner` in `topic.json` reflects who registered the topic definition, not who sends messages to it. Always verify producers by reading actual service code.
+
+---
+
+## Operational Notes
+
+These are non-obvious Pulsar behaviors and broker-metric semantics that have tripped up incident response. Keep them in mind when reasoning about backlog, redelivery, and consumer state.
+
+**`pulsar_rate_in` counts produces at publish time, including delayed messages.** A call to `sendDeviceSyncEvent(event, delay)` uses Pulsar's `deliverAfter` and the message is recorded against `pulsar_rate_in` immediately on publish — not when its delivery time arrives. Consequence: the topic produce rate can look much higher than the visible-backlog growth rate because most of those produces are queued for future delivery.
+
+**Backlog metric distinctions.** When triaging a "backlog growing" alert, these measure subtly different things:
+
+| Metric | Scope | Includes delayed? | What it counts |
+|---|---|---|---|
+| `pulsar_subscription_back_log_no_delayed` | per subscription | no | ready-to-deliver messages |
+| `pulsar_subscription_back_log` | per subscription | yes | all unacked messages |
+| `pulsar_subscription_delayed` | per subscription | only delayed | messages awaiting their delivery time |
+| `pulsar_msg_backlog` | per topic | yes (all subs) | retained storage across every subscription |
+| `pulsar_rate_in` | per topic | yes (publish time) | produce rate — delayed counted immediately |
+| `pulsar_subscription_msg_rate_out` | per subscription | yes (delivery time) | consume rate, includes redeliveries |
+
+`rate_in > rate_out` is normal whenever scheduled retries are in flight, even when the visible backlog is stable.
+
+**`reset-cursor --position latest` does NOT clear the delay queue.** Subscription cursor reset moves the visible read cursor forward, but messages already in the broker's delayed-delivery queue continue to mature and are delivered to whichever consumer holds their key when their delivery time arrives. To force-drain a self-feedback retry storm you must either remove the upstream cause (e.g., the DDB state that drives the retry) or use `pulsar-admin topics skip-all-messages` on the affected subscription.
+
+**Per-env subscription suffix creates multiple parallel subscriptions on the same topic.** Scoping Engine subscribes as `scoping-engine-device-sync-<suffix>` where the suffix is taken from `messaging.consumer-group-suffix` (`main`, `sbox`, `perf`, etc., per env). Each subscription is an independent cursor — messages are delivered to *every* subscription. A subscription whose consumer is no longer deployed (or never deployed) becomes a "zombie" that accumulates retained messages forever; `pulsar_msg_backlog` at the topic level can grow large from a zombie even when the live subscription is fully drained. Cull zombies with `pulsar-admin topics unsubscribe <topic> <subscription>` once you're certain nothing consumes them.
