@@ -1,6 +1,6 @@
 # CI/CD Pipeline
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-05-19
 
 ## Release Flow Overview
 
@@ -30,6 +30,8 @@ All workflows live in `.github/workflows/`. The main ones for a service like `sc
 ### `shared-values-version` file
 
 Each service repo contains `values/shared-values-version`, a plain text file holding a 7-character SHA pinning the version of `platform-shared-values` the service expects. The `check-shared-values.yml` workflow verifies this on PRs.
+
+To bump the pin, edit this file in the service repo and merge — Highway-to-Prod automation then propagates the new SHA into every `sharedValuesVersion` field in `components/<service>.yaml` via a bot commit on `jamf/components` main. Do **not** manually edit `components/<service>.yaml` to change `sharedValuesVersion`; the next service-side bump will overwrite it.
 
 ## components repo: ApplicationSet per Service
 

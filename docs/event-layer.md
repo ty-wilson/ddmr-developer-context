@@ -1,6 +1,6 @@
 # Event Layer
 
-Last reviewed: 2026-05-18
+Last reviewed: 2026-05-19
 
 ## Overview
 
@@ -164,6 +164,8 @@ Scoping Engine uses `@ConfigurationProperties(prefix = "messaging.topics")`. Key
 Topic and subscription definitions live under `configuration/<catalog>/<env>/topics/<tenant>/<namespace>/<topic>/` (catalogs are `platform` and `jpro`; envs are `dev`, `stage`, `sbox`, `prod`). Each topic directory contains `topic.json` (declaring `name`, `settings`, `properties`) and a `subscriptions/<sub-name>/sub.json` file per subscription — subscriptions are no longer nested in the topic file. Resources are applied by the Pulsar Operator via ArgoCD.
 
 To add a topic or subscription: create the directory/files, open a PR. The `run-and-commit.yaml` workflow regenerates `values/service-type-specific/<catalog>/values-<env>.yaml` on Linux/py3.12 and auto-commits back to the branch; `pr-checks.yml` then validates no drift. Note: local regeneration on macOS can produce filesystem-ordering diffs that CI won't accept — let CI regenerate.
+
+The same `values-<env>.yaml` is consumed by both commercial and HC clusters for an env — each cluster's Pulsar Operator provisions the identical topic/subscription set on its own broker. There is no per-cluster split, so a subscription added for a deployment that only exists on one side will be created as an orphan on the other.
 
 ### Subscription alerting
 
