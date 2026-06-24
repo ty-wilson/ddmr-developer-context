@@ -62,6 +62,7 @@ All services below participate in the Blueprints system (`system: blueprints` in
 - **compliance-benchmark-engine** (Red) — Produces verified-rules topic.
 - **spaghetti-mux** (Pulsaroni) — Pulsar event relay. Consumes declaration-assignment-changed and SCIM events.
 - **m2m-robocop** — M2M authentication library used by all services.
+- **m2m-foundry** (Hedgehogs) — Keycloak custom providers; defines M2M JWT claim shape (incl. divisionId).
 - **jamf-school-helm-apns** (Pixels) — Consumes declaration-assignment-changed.
 - **Jamf Pro Server / jamf-messaging** — Produces platform events: device-group-changed, device-management-channel-changed, device-*-state events.
 - **device-identity-mapping-service** (Team Rocket) — Consumes device-identity-certificate-issued, device-management-state.
@@ -81,6 +82,7 @@ IMPORTANT: When answering questions about cross-service concerns, do NOT guess o
 - **HTTP calls between services, Tyk gateway, API contracts** → read `../ddmr-developer-context/docs/api-layer.md`
 - **Pulsar events, topic routing, event schemas** → read `../ddmr-developer-context/docs/event-layer.md`
 - **Authentication, JWT sidecar, tenant resolution** → read `../ddmr-developer-context/docs/auth-and-tenancy.md`
+- **DSS 401 "Tenant mismatch" / orphaned-tenant troubleshooting** → read `../ddmr-developer-context/docs/dss-401-tenant-mismatch-playbook.md`
 - **DynamoDB table designs, GSIs, key patterns** → read `../ddmr-developer-context/docs/database.md`
 - **Test repos, component/system/perf/contract testing** → read `../ddmr-developer-context/docs/testing.md`
 - **Grafana dashboards, metrics, logging, alerting** → read `../ddmr-developer-context/docs/observability.md`

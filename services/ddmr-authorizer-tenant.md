@@ -1,6 +1,6 @@
 # DDmR Authorizer Tenant
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-06-24
 
 > **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
 
@@ -31,7 +31,7 @@ DDmR Authorizer Tenant is a Spring Boot WebFlux service (not a Lambda despite th
 
 ## DynamoDB Key Patterns
 
-Single-table design with a single hash key (`pk`). No sort key, no GSIs.
+Single-table design with a single hash key (`pk`). No sort key. One GSI: `claimTenantMigration_index` (hash key `claimTenantMigration`, projection ALL), scanned by the `ddmr-tenant-migration-job` to find records flagged for tenant reconciliation.
 
 | `pk` | Attributes | Description |
 |------|-----------|-------------|
@@ -39,8 +39,9 @@ Single-table design with a single hash key (`pk`). No sort key, no GSIs.
 
 - `createdOn` and `lastAccess` are stored as epoch milliseconds (Number).
 - `lastAccess` is updated at most once every 6 hours (`A_TIME_GRANULARITY`) to reduce write traffic.
-- A legacy attribute `platformTenant` may be present on older records. The lookup prefers `platformTenant` over `tenantId` when both exist.
-- A `claimTenantMigration` attribute is written (once, conditionally) when a mismatch is detected between the stored tenant ID and the JWT `tenant_id` claim, flagging the record for reconciliation.
+- **`tenantId` only ever holds an authorizer-*generated* UUID.** A JWT `tenant_id` claim is never persisted into `tenantId` (the claim-fallback path returns the claim without writing — see Tenant Resolution Logic). So a stored `tenantId` is always a value this service minted, and the table is effectively a registry of instances that once hit the generate path.
+- **`platformTenant`** is the canonical *real* platform tenant. It is written by the **`ddmr-tenant-migration-job`** after it successfully remaps a tenant's data (promoting the flagged `claimTenantMigration` value to `platformTenant`). When present, the lookup prefers it over `tenantId`; migrated records carry both (the original generated `tenantId` plus the real `platformTenant`).
+- A **`claimTenantMigration`** attribute is written (once, conditionally) when the stored tenant differs from the JWT `tenant_id` claim, flagging the record for reconciliation. The migration job scans the `claimTenantMigration_index` GSI for flagged records, remaps their DSS data old→new, then sets `platformTenant` and clears the flag. NOTE: this only fires on the **CSA** path — the M2M path (Tyk → DSS in-pod filter) takes the tenant straight from the JWT claim and never touches this table, so a tenant change seen only over M2M is invisible here and never gets flagged.
 
 ---
 
@@ -73,7 +74,7 @@ Mismatch detection: if DynamoDB has a record but its stored tenant ID differs fr
 
 **`generateTenantId=false` in production.** Unknown tenants get a 401 rather than a new ID. If a device cannot get through and there is no record in DynamoDB, the tenant mapping must be seeded externally before requests will succeed.
 
-**`platformTenant` vs `tenantId` attribute.** Some older DynamoDB records use `platformTenant` as the attribute name. The lookup reads `platformTenant` preferentially when present. New records are always written with `tenantId`.
+**`platformTenant` vs `tenantId` attribute.** `tenantId` is always an authorizer-generated UUID; `platformTenant` (when present) is the real platform tenant added by the `ddmr-tenant-migration-job`, and the lookup prefers it. A record with a generated `tenantId` and **no** `platformTenant` was never migrated — if its real tenant later diverges (and only ever appears over M2M, which bypasses this service), it stays unreconciled. This is the root pattern behind DSS "Tenant mismatch" 401s (see `declaration-storage-service.md`).
 
 **`rejectRequestInStageHack` exists as a staging test shim.** Treat as dead code in production. If it is accidentally enabled, all requests for any new `(organizationId, instanceId)` pair will be rejected for at least one hour.
 

@@ -1,6 +1,6 @@
 # API Layer
 
-Last reviewed: 2026-04-28
+Last reviewed: 2026-06-24
 
 ## Overview
 
@@ -170,6 +170,8 @@ Actuator endpoints (`/actuator`, `/actuator-jwt`) are blacklisted at the Tyk lay
 **Scoping Engine → VPP App Service**: `VppAppClient` calls `POST /v1/components/app-service/assignment/device/{device}/{channel}` when a device sync triggers app assignment. Requires `vpp-app.client.host` to be configured; skips silently if absent.
 
 **Other**: Blueprint Management, Declaration Reporting Service, and App Declaration Service all call DSS for declaration content or device data.
+
+**Jamf Pro (JSS) → DSS**: Jamf Pro also calls DSS, and as of **2026-01-22** it does so through the **internal Tyk gateway** (`https://{us|eu|apac}.int.apigw.jamf.com/dss`) by default. The DSS URL each instance uses comes from the `com.jamfsoftware.dme.dss.url.override` knob if set, otherwise the regional default — which was repointed from the direct `dss.{region}.services.jamfcloud.com` URL to the Tyk gateway in `jamf/atlas-global-resources` (`pipeline.yaml`). The Jamf Pro code that reads the knob (with the Tyk fallback) shipped in **11.26.0** (jss PR #490425 / JPCFM-5293; planned for 11.25 but missed that cut). Consequence: instances without a per-instance override now reach DSS over Tyk, which presents the instance's *real* M2M tenant to DSS — the trigger for "Tenant mismatch" 401s on instances whose declarations were stored under an older/generated tenant (see `services/declaration-storage-service.md` and `auth-and-tenancy.md`). A later, separate step, `com.jamfsoftware.dme.dss.use.m2m.auth` (11.28.0), switches the DSS client's own token from CSA to M2M (default false).
 
 ---
 

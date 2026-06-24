@@ -1,6 +1,6 @@
 # Auth And Tenancy
 
-Last reviewed: 2026-05-12
+Last reviewed: 2026-06-24
 
 ## Overview
 
@@ -100,16 +100,19 @@ The `ddmr-authorizer-tenant` is a Spring Boot WebFlux service acting as a Lambda
 - If the JWT carries a `tenant_id` claim and it disagrees with the stored record, logs a warning and flags the record for migration (`claimTenantMigration` attribute).
 - Returns `X-TenantId` (the tenant UUID) and `X-Auth-Src` (a `CSA:<organizationId>:<customerId>` string) as response headers to the API gateway.
 
+**Generated vs real tenant (root of "Tenant mismatch" 401s).** The `tenantId` the authorizer stores is only ever a UUID it *generated* (when `generateTenantId` was enabled and no claim was present); a `tenant_id` claim is never persisted into `tenantId`. The real platform tenant lands in a separate `platformTenant` attribute, written by the `ddmr-tenant-migration-job` after a successful migration, and is preferred by the lookup when present. Crucially, **only the CSA path consults this table.** The M2M path (Tyk → DSS in-pod `JwtFilter`) reads the tenant straight from the `https://www.jamf.com/tenant.tenantId` claim and never touches the authorizer — so if an instance's real tenant only ever arrives over M2M, the authorizer never sees the divergence, never flags it (`claimTenantMigration`), and the migrator never reconciles it. That orphaned-generated-tenant state is what produces DSS "Tenant mismatch" 401s once the instance's DSS traffic starts presenting the real tenant. See `services/ddmr-authorizer-tenant.md` and `services/declaration-storage-service.md`.
+
 ---
 
 ## Service-Side Header Extraction (`AbstractApiRequest`)
 
-`AbstractApiRequest` is defined in `ApiRequests.kt`. Every HTTP handler in scoping-engine extends it, and it extracts the two tenant headers in its constructor:
+`AbstractApiRequest` is defined in `ApiRequests.kt`. Every HTTP handler in scoping-engine extends it, and it extracts the tenancy attributes in its constructor:
 
 - `X-TenantId` (constant `TENANT_HEADER`): required. If absent or blank, throws `ResponseStatusException(401, "No tenant identifier")`.
 - `X-EnvironmentId` (constant `ENVIRONMENT_HEADER`): optional. Returns `null` if absent or blank.
+- `X-DivisionId` (constant `DIVISION_HEADER`): optional. Returns `null` if absent or blank — see "Division Context" below.
 
-These values are available as `tenant` and `tenantEnv` properties on any request object. Neither header is documented in the OpenAPI spec as a direct client concern because they are injected by the sidecar/authorizer, not set by API callers.
+These values are available as `tenant`, `tenantEnv`, and `callerDivision` properties on any request object. None of these are documented in the OpenAPI spec as direct client concerns because they are injected by the sidecar/authorizer/`JwtFilter`, not set by API callers.
 
 ---
 
@@ -133,6 +136,48 @@ The tenant must be a valid UUID for Robocop. If the tenant string is not a valid
 
 ---
 
+## Division Context (AD-16 Milestone 1)
+
+Division is a platform-wide logical subsection of an environment — similar to Sites in Jamf Pro or Locations in Jamf School. Division-aware filtering is each service's responsibility (see [AD-16](https://jamfsoftware.atlassian.net/wiki/spaces/ARCH/pages/5577703604)). The platform's contract is: services receive a `divisionId` UUID on the M2M JWT claim; everything else (storage, filtering, reference-consistency) is up to the service.
+
+### Claim shape
+
+`divisionId` is added as a sibling field on both `https://www.jamf.com/tenant` and `https://www.jamf.com/environment` claims:
+
+```json
+"https://www.jamf.com/tenant": {
+  "tenantId": "64427c7b-...",
+  "environmentId": "a3f55b34-...",
+  "organizationId": "629d3780-...",
+  "divisionId": "...",      // present when an admin is working in a division
+  "url": "..."
+}
+```
+
+A global (no-division) admin's claim simply omits the field. The `JwtFilter.takeIf { isNotBlank() }` guard means an empty-string `divisionId` is also treated as "no division" rather than written as `""`.
+
+### Where divisionId is set (token-exchange flow only)
+
+The Tyk gateway's `auth0-to-m2m` plugin (in `tyk-custom-plugins`) extracts the external `X-Jamf-Division-Id` request header, validates the admin's ACL via the Pro/School permissions endpoint, then calls the M2M Service (Keycloak custom provider in `m2m-foundry`) with an internal `divisionId` header during a **token-exchange** request. The Keycloak provider applies the header value to the tenant/environment claims of the issued M2M token.
+
+Two consequences:
+
+- **`client_credentials` flow never adds divisionId.** Only token exchange (initiated by Tyk from an external request) triggers the divisionId-injection code path. A direct `curl` to the M2M issuer with `grant_type=client_credentials` will always return claims without `divisionId`, regardless of how the work has progressed — this is by design, not a bug.
+- **The `divisionId` header is reject-listed for non-Tyk callers.** `m2m-terraform` configures the `reject-headers` executor on the M2M service so only the Tyk plugin can set the header. Direct callers cannot spoof a division.
+
+### Validation rules enforced by the M2M service
+
+- `divisionId` must be a valid UUID.
+- No cross-division token exchange: if the subject token already carries a `divisionId` and the header supplies a different value, the exchange is rejected.
+- No organization-level tokens with `divisionId`: rejected if the resulting token would be at organization level.
+- Header value wins if provided; otherwise the existing claim value is preserved; otherwise `null`.
+
+### Service-side reading
+
+`JwtFilter` reads `info["divisionId"]?.toString()` from the verified `https://www.jamf.com/tenant` claim and writes it to `exchange.attributes[DIVISION_HEADER]` (the `X-DivisionId` key). `AbstractApiRequest.callerDivision: String?` exposes the value to handlers — `null` means the caller is a global admin. Services that want division-aware filtering compare object `divisionId` to `callerDivision` via the `divisionAllowed` predicate (a global caller sees everything; otherwise exact match).
+
+---
+
 ## In-Pod JwtFilter
 
 Both declaration-service and DSS replace the sidecar with an in-process Spring WebFlux filter. The pattern was introduced in declaration-service under DDMR-1088 (`com.jamf.declaration.auth.JwtFilter`) and DSS has since adopted it (`com.jamf.declarationstorage.auth.JwtFilter`). scoping-engine still uses the sidecar.
@@ -142,7 +187,7 @@ Both filters share these properties:
 - **Multiple issuers, one filter.** `JwtProperties.issuers` is a list of `JwtIssuerProperties`; each entry has its own `issuer`, optional `jwksTemplate`, and `requiredScopes`. The filter looks up the decoder by the inbound JWT's `iss` claim. Unknown issuer → 401 ("Unsupported JWT issuer").
 - **Scope check is ANY-match across a set.** `JwtScopeValidator` parses the `scope` claim (space- or comma-separated) and succeeds if any required scope is present. declaration-service's default `requiredScopes` is `{declaration-service-product, blueprint-components-api-product}` (the two Tyk products that route to the same pod, broadened by PR #158).
 - **Open endpoints are hardcoded** to `HEAD /api/v1` (connectivity check) and the actuator base path. Less flexible than the sidecar's configurable `open` list. The filter sets an `OPEN_REQUEST_ATTR` exchange attribute so downstream code can tell whether the request was authenticated.
-- **Tenant is passed via WebFlux exchange attributes, not request headers.** When `authEnabled` is true, the filter reads `https://www.jamf.com/tenant.tenantId` (and `.environmentId`) from the verified JWT and stores them as `exchange.attributes[TENANT_HEADER]` / `exchange.attributes[ENVIRONMENT_HEADER]`. `AbstractApiRequest` reads from those attributes, throwing 401 if absent. When `authEnabled` is false (test/local), the same attributes are populated from inbound `X-TenantId` / `X-EnvironmentId` headers instead.
+- **Tenant is passed via WebFlux exchange attributes, not request headers.** When `authEnabled` is true, the filter reads `https://www.jamf.com/tenant.tenantId` (and `.environmentId`, `.divisionId`) from the verified JWT and stores them as `exchange.attributes[TENANT_HEADER]` / `exchange.attributes[ENVIRONMENT_HEADER]` / `exchange.attributes[DIVISION_HEADER]`. `AbstractApiRequest` reads from those attributes, throwing 401 if tenant is absent. When `authEnabled` is false (test/local), the same attributes are populated from inbound `X-TenantId` / `X-EnvironmentId` / `X-DivisionId` headers instead. The division attribute is gated by `takeIf { it.isNotBlank() }` so empty-string claim values are normalized to "no division" rather than written as `""`.
 - **CSA path.** DSS's filter additionally resolves CSA tokens via `CsaAuthResolver` / `CsaTenantResolver`, which looks up the tenant in the `tenant-authorizer` DynamoDB table. declaration-service is M2M-only.
 
 Practical consequence: port 8080 on DSS no longer trusts an inbound `X-TenantId` header in prod — callers must send a Bearer JWT, just as they would via the gateway path. Port-forwarding the pod and sending only `X-TenantId` returns 401 in any environment where `authEnabled` is true.

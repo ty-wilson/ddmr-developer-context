@@ -1,6 +1,6 @@
 # Database
 
-Last reviewed: 2026-04-07 (Tyler Wilson)
+Last reviewed: 2026-06-24 (Tyler Wilson)
 
 ## Overview
 
@@ -49,7 +49,7 @@ Primary key: `pkey` (hash) / `psort` (range)
 
 GSIs:
 - `declaration_index` — hash key `declaration_key`, projection `ALL`
-- `tenant_index` — hash key `tenant`, projection `KEYS_ONLY`
+- `tenant_index` — hash key `tenant`, projection `KEYS_ONLY` — **staging only.** As of 2026-06 the **prod** `ddmr-declaration-storage` table has *only* `declaration_index`; `tenant_index` has been removed in prod. The `ddmr-tenant-migration-job` (which queries `tenant_index` to remap a tenant's items) is consequently idle in prod.
 
 Key patterns:
 

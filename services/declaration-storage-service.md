@@ -1,6 +1,6 @@
 # Declaration Storage Service
 
-Last reviewed: 2026-05-12
+Last reviewed: 2026-06-24
 
 > **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
 
@@ -94,14 +94,19 @@ DSS does not consume any Pulsar topics. It is a pure producer from an eventing s
 
 ## Known Callers
 
-Services that write to or read from DSS at runtime:
+Services that write to or read from DSS at runtime, grouped by how they reach it:
 
-- `scoping-engine` — calls DSS via `DeclarationStorageWrapper` (from the `declaration-product-springboot-starter`) to manage management-properties declarations for devices
-- `declaration-service` — uses `declaration-product-springboot-starter` to store and delete all declarations it translates
-- `blueprint-component-declarations-service` — calls DSS as part of its translate/cleanup lifecycle
-- `blueprint-component-sw-update-service` — calls DSS as part of its translate/cleanup lifecycle
-- `blueprint-component-custom-declarations` — calls DSS via `declaration-product-springboot-starter` for user-authored custom declarations
-- `configuration-profile-service` — calls DSS for configuration profile declaration storage
+**Via the `declaration-product-springboot-starter`:**
+- `scoping-engine` — `DeclarationStorageWrapper` manages management-properties declarations for devices
+- `declaration-service` — stores and deletes all declarations it translates
+- `blueprint-component-custom-declarations` — user-authored custom declarations
+
+**Via their own declarative HTTP client (not the starter):**
+- `blueprint-component-declarations-service` — defines `DeclarationStorageServiceClient` + `DeclarationStorageAdapter` in `client/`, used for translate/cleanup lifecycle
+- `blueprint-component-sw-update-service` — same pattern as above
+- `configuration-profile-service` — `DeclarationStorageServiceClient` under `declaration/dss/`, called from `DeclarationLegacyProfileConfigurationService`
+
+The split matters when reasoning about response-handling behavior (retry, error mapping): the two groups have different client codebases. Changes that affect the HTTP contract need to land in both.
 
 ---
 
@@ -146,6 +151,8 @@ Note: Most operations in the client target v2 endpoints. Two exceptions: `remove
 **BYOK encryption is opt-in per tenant.** Which tenants get payload encryption is controlled by `privacy.force-tenants` config or the per-request `X-TenantEncryption` header. Internally, DSS always reads the prefix (`json:` / `iron:`) to determine how to decode; callers never see raw prefixed values through the API.
 
 **503 during tenant migration.** While a tenant migration is in progress (indicated by a `MIGRATION / #FROM#<tenantId>` item in DynamoDB), most write endpoints and some reads return `503 Service Unavailable`. Your client should treat 503 as transient and retry with backoff.
+
+**Declaration ownership is enforced per-tenant → `401 "Tenant mismatch"`.** A declaration is looked up by UUID alone, then `DeclarationApiHelper.validateDeclarationAppropriate` compares the request's tenant to the declaration's stored `tenant` attribute. If they differ → **`401 "Tenant mismatch"`** (not 403/404). If the UUID isn't found at all → `204` (GET) / `400` (assign). So a 401 from DSS is *not* a credential failure — it means "this token's tenant doesn't own this declaration." This is the signature of **orphaned-tenant** problems: declarations were stamped with one tenant (e.g. an authorizer-*generated* tenant) and the instance now presents a *different* (real platform) tenant — commonly after the instance's DSS traffic started flowing through the Tyk gateway (which surfaces the real M2M tenant). Fix is to realign the data (migrate the declarations' `tenant`, or have Jamf Pro regenerate its system declarations under the current tenant), not auth config. See `ddmr-authorizer-tenant.md` for how generated vs real (`platformTenant`) tenants arise.
 
 **`removeNotApplied` is deprecated on v1.** The v1 `assignDeviceDeclarations` endpoint had a `removeNotApplied` flag. On v2 the same parameter exists but is superseded by explicit tag-scoped replace semantics. Prefer v2.
 

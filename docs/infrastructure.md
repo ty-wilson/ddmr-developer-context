@@ -1,6 +1,6 @@
 # Infrastructure
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-06-24
 
 ## Two Infrastructure Repositories
 
@@ -44,7 +44,7 @@ Production is the only multi-region deployment for ddmr-terraform. HC stage is c
 
 ### DynamoDB Tables
 
-Table schemas are defined as YAML files in `grunt/` (ddmr-terraform) and `infrastructure/aws/module_vars/` (ddmr-infrastructure). All tables use a single-table design with string `pkey`/`psort` (or `pk`) keys. Per-environment table names follow the pattern `ddmr-{env}-{service}`.
+Table schemas are defined as YAML files in `grunt/` (ddmr-terraform) and `infrastructure/aws/module_vars/` (ddmr-infrastructure). All tables use a single-table design with string `pkey`/`psort` (or `pk`) keys. Per-environment table names follow the pattern `ddmr-{env}-{service}`. **Production drops the env segment** — the prod tables are `ddmr-declaration-storage`, `ddmr-scoping-engine`, and `ddmr-tenant-authorizer` (account 613358915025, us-east-1). Note also that the prod `ddmr-declaration-storage` table currently has only the `declaration_index` GSI; the `tenant_index` GSI (below) exists in staging but has been removed in prod.
 
 | Service                   | Table name (staging example)              | GSIs                                      |
 |---------------------------|-------------------------------------------|-------------------------------------------|
