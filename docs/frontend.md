@@ -1,6 +1,6 @@
 # Frontend
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-07-29
 
 ## micro-frontend-hub monorepo
 
@@ -137,6 +137,8 @@ An internal ALB at `{env}.mdm-schema.jamf.build` routes to a path-mapping Lambda
 
 Environments: `dev.mdm-schema.jamf.build`, `stage.mdm-schema.jamf.build`, `prod.mdm-schema.jamf.build`.
 
+**Two version notions, and they can differ.** The ingest keeps a "latest ingested" version in SSM (`/mdm_schema/version/device-management`) — that's the version new content is uploaded *under*. `GET /v1/version` returns the "last **supported** version", which is what the MFEs request and can *lag* the ingested one. So freshly-ingested schema/translations can exist at a version the UI isn't asking for yet. (`sbox` local dev reads the `dev`-tier buckets.)
+
 ---
 
 ## Config Profiles vs Declarations: schema handling
@@ -158,6 +160,20 @@ Fetches the **raw Apple DDM declaration** from `GET /v1/declarative/{schemaVersi
 
 ---
 
+## Translations & localization
+
+Field labels/descriptions come from a separate translations layer, served at `GET /v1/translations/{version}/{type}/{locale}` and authored in the **`jamf/mdm-schema-translations`** repo (Goldminers). The ingest **translations Lambda** auto-generates only the `en-US` base (`title`/`description`) from the schema; every other locale, plus the Jamf overrides, are **hand-authored/merged** into that repo and preserved across schema versions. The repo's `s3-upload` GitHub Action deploys a branch's translations to a per-env bucket (`dev`/`stage`/`prod`) on push to specific branches or via `workflow_dispatch`.
+
+Override fields (all optional, keyed per property):
+- `jamfTitle` / `jamfDescription` — override a field's title/description; win over the Apple base text.
+- `jamfEnums` — map raw `enum`/`rangelist` values to human-readable dropdown labels. Partial maps are fine; unmapped values fall back to the raw value.
+
+**Consumption / `$ref` handling:** JSFG resolves `$ref`s in **both** the schema (`unrefSchema`) and the localizations (`unrefLocalizations`), so fields behind a `$defs`/`$ref` (e.g. array-item types) get localized too. `jamfEnums` reach the Select widget via `setLocalizations(...)`.
+
+**CP vs declarations divergence:** config-profiles forwards schema + ui-schema + localizations to JSFG, so `jamfEnums` labels render. The declarations MFE folds `jamfTitle`/`jamfDescription` into the schema at the query layer (`buildSchemaProperty`) but historically forwarded **no** ui-schema/localizations, so declaration enum dropdowns showed raw values (the gap DDMR-1224 is closing). Note `buildSchemaProperty` also rebuilds the schema through a keyword allow-list, which silently drops Apple constructs it doesn't copy (notably `rangelist` and `assettypes`) — config-profiles avoids this because it never rebuilds.
+
+---
+
 ## json-schema-form-generator (`@jmf/json-schema-form-generator`)
 
 There are two distinct versions of JSFG:
@@ -170,6 +186,7 @@ The in-hub MFE uses nanostores for reactive form state. Communication with the p
 - `setPayloadFormValue(value)` / `setInitialPayloadFormValue(value)` — pre-populate or reset form values
 - `getPayloadOutputFormValue()` — retrieve the current form output on save
 - `getCanBeSaved()` / `setSaveClicked(true)` — trigger validation before submission
+- `setUiSchema(uiSchema)` / `setLocalizations(localizations)` — forward UI hints (widget/hide/order) and localization data (`jamfTitle`/`jamfDescription`/`jamfEnums`) for the form to apply
 
 ---
 

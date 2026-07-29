@@ -30,7 +30,8 @@ All services below participate in the Blueprints system (`system: blueprints` in
 - **configuration-profile-plist-migrator** — Plist migration tooling. GraalVM native.
 - **mdm-schema-ingest-inbound-adapter** — Hourly Lambda: ingests Apple DDM repo → transforms → S3.
 - **mdm-schema-ingest-infrastructure** — Terraform/Terragrunt infra for the schema pipeline.
-- **mdm-ui-schema** — UI-specific schema customizations.
+- **mdm-ui-schema** — UI-specific schema customizations (widget/hide/order hints).
+- **mdm-schema-translations** — Locale strings + Jamf label overrides (jamfTitle/jamfDescription/jamfEnums), per-env S3 upload. (**mdm-jamf-schema**: server-side enhancer overlays, e.g. sensitive flags, merged at ingest.)
 
 ### Other Teams
 - **tenants-odin** (Angry Cockroaches) — Tenant management service. DynamoDB.
