@@ -1,6 +1,6 @@
 # Database
 
-Last reviewed: 2026-07-13 (Tyler Wilson) — corrected: `tenant_index` GSI removed from scoping-engine and declaration-storage tables (all envs) in DDMR-1035 on 2026-04-02; added group→division row
+Last reviewed: 2026-07-29 (Tyler Wilson) — documented DSS assignment `tag` as a non-key, conditional-write-guarded attribute, `declaration_index` not being tenant-scoped, and declaration IDs being random UUIDs (verified in `declaration-storage-service` code)
 
 ## Overview
 
@@ -62,7 +62,9 @@ Key patterns:
 | `MDM#<tenant>\|<deviceId>\|<channel>` | `A#<identifier>` | Declaration assignment for a device+channel+identifier. Sets `declaration_key = DECL#<id>`. |
 | `MIGRATION` | `#FROM#<tenantId>#TO#<uuid>` | In-progress tenant migration marker |
 
-The `declaration_index` GSI is used to find all assignments for a given declaration (e.g., when deleting a declaration, all its assignments are removed first). Because projection is `ALL`, the full assignment item is available from the index without a second read.
+The `declaration_index` GSI is used to find all assignments for a given declaration (e.g., when deleting a declaration, all its assignments are removed first). Because projection is `ALL`, the full assignment item is available from the index without a second read. Note the GSI is keyed only on `declaration_key` (`DECL#<id>`), so it is **not** tenant-scoped; callers that read it must filter by the row's `tenant` attribute themselves.
+
+An assignment is uniquely identified by `MDM#<tenant>|<device>|<channel>` + `A#<identifier>`. **`tag` is a non-key attribute, not part of the key** — null is persisted as the empty string `""`, and null/empty are treated as equal. Because tag is not in the key, a given `(tenant, device, channel, identifier)` slot holds exactly one assignment with exactly one tag value; you cannot have two assignments for the same slot differing only by tag. Add/remove are guarded by a conditional write requiring both the tenant and tag to match the existing row, so a write under a different tag is rejected (surfacing as a `wrong tenant or tag` / `tag mismatch` result) rather than clobbering another owner's assignment. This is the storage-level mechanism behind the tag-based ownership isolation and the `401 "Tenant mismatch"` behavior described in `services/declaration-storage-service.md`. Declaration IDs are random UUIDs (`UUID.randomUUID()` in `createDeclaration`), not content hashes, so a `DECL#<id>` belongs to exactly one declaration owned by one tenant.
 
 Declaration payloads are prefixed `json:` (plaintext) or `iron:` (IronCore encrypted). Encrypted items also store an `edek` (encrypted data encryption key) alongside the payload.
 
