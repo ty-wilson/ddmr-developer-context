@@ -1,91 +1,47 @@
 # Blueprint Components Registry Service
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-07-29. Re-verified against `origin/main` on that date: the controller route prefixes, the absence of any write endpoint, the LaunchDarkly-vs-tenant caching split (**the old page was wrong about this**, see below), the `FragmentType` enum (a member was missing), `DEFAULT_PAGE_SIZE` and the API page-size default, the `sync-fragments` topic name, and the Known Callers list (**two callers were missing**). Not re-verified and older, carried forward from the 2026-04-07 review: the fragment visibility rules, the actuator endpoint semantics, and the `AvailableFragmentsSyncFailedException` suppression behaviour. Treat those as a pointer.
 
-> **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
+Run the commands in **Where to find the data** at the end before acting on any value here. This repo moves quickly and this page falls behind it, so prefer the greps over the prose.
 
 **Owner:** Ocean team
 
 ## Summary
 
-Blueprint Components Registry Service is the source of truth for which blueprint components and fragments exist and which are available to a given tenant. A "component" is a named unit of configuration capability (e.g., Software Updates, Configuration Profiles) that a blueprint can include. A "fragment" is a sub-unit within a component — it represents a concrete, selectable piece of configuration (e.g., a specific configuration profile domain). The service stores component and fragment metadata in a relational database (Postgres via JPA/Hibernate), evaluates LaunchDarkly feature flags and Jamf product type (PRO vs. SCHOOL) per-tenant at read time to filter what is available, and syncs fragment data on demand from each component's own backing service via Pulsar events and actuator-triggered HTTP fetches. Component definitions (identity, capabilities, web app entry point, supported OS) are seeded from static YAML config at startup via `ComponentsInitializer`; fragment payload details are fetched live from the individual component services.
+Blueprint Components Registry Service is the source of truth for which blueprint components and fragments exist and which are available to a given tenant. A "component" is a named unit of configuration capability (e.g. Software Updates, Configuration Profiles) that a blueprint can include. A "fragment" is a sub-unit within a component: a concrete, selectable piece of configuration (e.g. a specific configuration profile domain).
+
+It stores component and fragment metadata in PostgreSQL (JPA/Hibernate), evaluates LaunchDarkly feature flags and Jamf product type per tenant at read time to filter what is available, and syncs fragment data on demand from each component's own backing service via Pulsar events and actuator-triggered HTTP fetches. Component definitions (identity, capabilities, web app entry point, supported OS) are seeded from static YAML config at startup by `ComponentsInitializer`; fragment payload details are fetched live from the individual component services.
+
+**This service is the routing table BMS uses**, so an error here propagates into deployment behaviour in another team's service. That is the reason for the verification emphasis below.
 
 ---
 
-## API Endpoints
+## API surface
 
-All routes are under `/external/v1` (customer-facing) or `/internal/v1` (platform-internal). Every request must carry a valid M2M JWT. Tenant identity is extracted from the JWT via `@TenantId`. Pagination uses `page` (zero-based) and `page-size` query params, defaulting to 100 items per page.
+Routes live under two prefixes, both read-only. Every request carries an M2M JWT and tenant identity comes from it via `@TenantId`.
 
-### External component endpoints (`/external/v1/components`)
+- **`/external/v1/components`**, **`/external/v1/fragments`**, **`/external/v1/available-fragment-types`**: customer-facing. Returns `PagedResponse<...ExternalDto>`.
+- **`/internal/v1/components`**, plus **`/internal/v1/components/global/{identifier}`**: platform-internal. Returns `...InternalDto`, and the `global` variant returns the component in its non-tenant-filtered state with **no feature-flag evaluation**, for use when tenant context is unavailable.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/external/v1/components` | List all components visible to the tenant. Results are filtered by feature flags and product type. Returns `PagedResponse<ComponentDescriptionExternalDto>`. |
-| `GET` | `/external/v1/components/{identifier}` | Get a single component by identifier. Returns `ComponentDescriptionExternalDto`. 404 if not found or not visible to the tenant. |
+Regenerate the route list from the controllers rather than trusting a table (grep in the verification section). Behaviours a route list will not tell you:
 
-### Internal component endpoints (`/internal/v1/components`)
+**Internal and external DTOs differ, and the difference matters.** `ComponentDescriptionInternalDto` includes `capabilities` and `translator.baseUri`; `ComponentDescriptionExternalDto` does not. A caller that needs to know whether a component supports configuration transformation or on-save validations, or where the component's own service lives, **must** use the internal endpoint. This is why BMS calls internal.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/internal/v1/components` | List components with feature flags evaluated for the tenant. Returns `PagedResponse<ComponentDescriptionInternalDto>`, which includes `capabilities` and `translator` fields absent from the external DTO. |
-| `GET` | `/internal/v1/components/{identifier}` | Get a single component for the tenant with feature flags applied. |
-| `GET` | `/internal/v1/components/global/{identifier}` | Get a component in its global (non-tenant-filtered) state — no feature flag evaluation. Used internally when a tenant context is unavailable. |
+**Fragment listing supports `search` (name/description), a repeatable `type` filter, `Accept-Language` for localized name/description sorting, and standard pagination and sort.** The paging parameter is named `page-size` (not `size`); the default page size is set in `application.yml` under the pageable config (`default-page-size`, `size-parameter`). Read the current value there rather than quoting one.
 
-### Fragment endpoints (`/external/v1/fragments`)
+### Actuator (ops/admin)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/external/v1/fragments` | List fragments visible to the tenant. Supports `search` (matches name/description), `type` (multi-value: `APP_CATALOG`, `APP_STORE`, `CONFIGURATION`, `LEGACY_PAYLOAD`), `Accept-Language` for localized name/description sorting, and standard pagination + sort. |
-| `GET` | `/external/v1/fragments/{identifier}` | Get a single fragment by identifier. 404 if not found or not visible to the tenant. |
-
-### Available fragment types (`/external/v1/available-fragment-types`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/external/v1/available-fragment-types` | Returns the distinct `FragmentType` values present among the tenant's visible fragments. |
-
-### Actuator (ops/admin) endpoints
-
-These are Spring Boot Actuator `@WebEndpoint` / `@Endpoint` operations, exposed on the management port. They are not part of the public API.
-
-| Operation | ID | What it does |
-|---|---|---|
-| `POST` | `/actuator/globalfragments` | Triggers a full re-sync of global fragments for all components from their backing services. |
-| `POST` | `/actuator/limitedfragments` | Triggers a full re-sync of limited fragments for all components. |
-| `POST` | `/actuator/specificfragments` | Triggers a re-sync of specific (tenant-owned) fragments for a given `tenantId` + `componentIdentifier`. Both parameters are required. |
-| `POST` | `/actuator/synclimitedfragments` | Syncs limited fragment availability for a specific `tenantId` + `componentIdentifier`. Useful for manually re-driving what a `SyncFragmentsEvent` would do. |
+Spring Boot Actuator `@WebEndpoint` / `@Endpoint` write operations on the management port, not part of the public API. Four exist at review time: `globalfragments`, `limitedfragments`, `specificfragments`, `synclimitedfragments`. The first two re-sync all components; the latter two require `tenantId` plus `componentIdentifier` and are the manual equivalent of what a `SyncFragmentsEvent` does. `ls src/main/java/**/actuator/` regenerates the list.
 
 ---
 
 ## Data Model
 
-The service uses a relational database (JPA/Hibernate, single schema).
+PostgreSQL, single schema, Flyway migrations in `src/main/resources/db/migration/`.
 
-### `component` table
-
-| Field | Notes |
-|---|---|
-| `id` | UUID PK |
-| `identifier` | Unique string, e.g. `com.jamf.ddm.sw-updates` |
-| `name` | Display name |
-| `description` | Optional |
-| `team` | Owning team (used for sync failure metrics) |
-| `feature_flag` | LaunchDarkly flag key; if set, component is hidden unless flag is on for the tenant |
-| `type` | `FragmentType` enum: `APP_CATALOG`, `APP_STORE`, `CONFIGURATION`, `LEGACY_PAYLOAD` |
-| `standalone` | Deprecated boolean; prefer `capabilities` |
-| `capabilities` | Set of `ComponentCapability`: `GLOBAL_FRAGMENTS`, `LIMITED_FRAGMENTS`, `SPECIFIC_FRAGMENTS`, `CONFIGURATION_TRANSFORMATION`, `ON_SAVE_VALIDATIONS` |
-| `icon_url_default/light/dark` | Icon URLs |
-| `web_application_entry_point` | CDN URL for the micro-frontend remote entry |
-| `web_application_capabilities` | Set of `WebApplicationCapability` |
-| `component_api_base_uri` | Base URI for the component's own service, used when fetching fragments |
-| `key_details` | Optional list of string keys describing additional detail fields |
-| `supported_products` | Set of `Product`: `PRO`, `SCHOOL` |
-
-Related tables: `component_localization` (i18n key/value per locale), `component_supported_os` (OS family + minimum version + optional feature flag per OS entry).
-
-### `fragment` table (single-table inheritance)
-
-Fragments share one table with a `kind` discriminator column:
+- **`component`**: one row per component. Keyed on a unique `identifier` string (e.g. `com.jamf.ddm.sw-updates`). Carries the LaunchDarkly `feature_flag` key, the `capabilities` set, icon URLs, `web_application_entry_point` (CDN URL for the micro-frontend remote entry), `web_application_capabilities`, `component_api_base_uri` (where to fetch fragments from), `key_details`, `supported_products`, and an owning `team` used for sync-failure metrics. `standalone` is a deprecated boolean; prefer `capabilities`.
+- **`component_localization`**: i18n key/value per locale. **`component_supported_os`**: OS family, minimum version, and an optional per-OS feature flag.
+- **`fragment`**: single-table inheritance with a `kind` discriminator. The three kinds are the visibility model, so they are worth stating rather than grepping:
 
 | `kind` | Class | Visibility rule |
 |---|---|---|
@@ -93,17 +49,27 @@ Fragments share one table with a `kind` discriminator column:
 | `LIMITED` | `LimitedFragment` | Visible only to tenants explicitly enrolled via the `limited_tenant_fragment` join table |
 | `SPECIFIC` | `SpecificFragment` | Visible only to the tenant that owns it (`owner_tenant_id`) |
 
-Key fragment fields: `identifier`, `name`, `description`, `feature_flag`, `type`, `key_details`, `supported_products`, `supported_os`, `localization`.
+- **`limited_tenant_fragment`**: junction table linking a `LimitedFragment` to a tenant ID string, populated when a `SyncFragmentsEvent` is processed.
 
-### `limited_tenant_fragment` table
+Do not transcribe the column inventory or the enum members; they drift. Regenerate both from the migrations and `src/main/java/**/model/` (see the verification section). For calibration on how fast they drift: the previous version of this page listed `FragmentType` as four members and it now has five, having gained `AI_GOVERNANCE`.
 
-Junction table linking a `LimitedFragment` to a `tenantId` string. Populated when a `SyncFragmentsEvent` is processed; the sync queries the component's own service for which limited fragments are currently available for that tenant.
+---
+
+## Events
+
+Consumes `SyncFragmentsEvent` on topic **`pdd/blueprints/sync-fragments-event`** (configured as `jamf.platform.messaging.consumers.sync-fragments.topic-name`), with a derived DLQ topic and a `max-redeliver-count`. Produces no events.
 
 ---
 
 ## Known Callers
 
-- `blueprint-management-service` — calls the internal component endpoints before save (to validate component configurations against the registry's schema) and at deploy time (to look up component metadata and resolve which component service to call). Results are Caffeine-cached in BMS.
+**Trap: this service's entire job is being discovered, so a short caller list is a warning sign rather than a fact.** Anything holding an M2M token with the right scope can read it, and the previous version of this page listed exactly one caller. Re-derived 2026-07-29 by grepping every sibling repo for `components-registry`:
+
+- **`blueprint-management-service`** (Ocean): calls the **internal** component endpoints before save (validating component configurations against the registry) and at deploy time (resolving which component service to call). Results are Caffeine-cached in BMS. See `blueprint-management-service.md`.
+- **`blueprint-deployment-service`** (Ocean): also calls the internal endpoints. Config points at `${jamf.platform.internal-gateway.base-uri}/blueprints/components-registry` in prod and `http://blueprint-components-registry-service:8080/internal` in sbox, and it requests the `blueprint-components-registry-api-product` M2M scope.
+- **micro-frontend-hub apps**, via Tyk at `/blueprints/components-registry/v1/...`: the `blueprints` host (which also maintains Pact contracts against provider `blueprint-components-registry-service-external`) and `blueprint-component-passcode-settings` (`useComponentRegistryApi.ts`).
+
+Tyk defines both internal (`blueprint-components-registry-api-internal-*`) and external (`blueprint-components-registry-api-external-*`) API products per region, so external customer traffic is possible and this list is a floor, not a ceiling.
 
 ---
 
@@ -111,27 +77,63 @@ Junction table linking a `LimitedFragment` to a `tenantId` string. Populated whe
 
 | Dependency | How used |
 |---|---|
-| **Tenants service** (`tenants-odin`) | Called via `TenantServiceClient` for every request to look up `organizationId`, `environmentId`, and `productCode`. Result is used to build the LaunchDarkly context and determine which OS families are supported. Retried on 503/504/timeout. |
-| **LaunchDarkly** | `FeatureFlagService` evaluates all boolean flags for the tenant's LD context. Components and fragments with a `featureFlag` set are hidden if the flag is off. |
-| **Individual component services** | `ComponentServiceClient` calls each component's own API (`/fragments`, `/limited-fragments`, `/available-limited-fragments`, `/specific-fragments`) to pull fragment metadata during sync. The base URI per component is configured in `ComponentClientProperties`. |
-| **Apache Pulsar** | Consumes `SyncFragmentsEvent` on `${jamf.platform.messaging.consumers.sync-fragments.topic-name}`. |
+| **Tenants service** (`tenants-odin`) | `TenantServiceClient` / `TenantServiceAdapter` resolves `organizationId`, `environmentId`, and `productCode`, used to build the LaunchDarkly context and determine supported OS families. Retried on 503/504/timeout. Base URI `${jamf.platform.internal-gateway.base-uri}/tenants/api`. |
+| **LaunchDarkly** | `FeatureFlagService` evaluates flags against the tenant's LD context. Components and fragments with a `featureFlag` set are hidden when the flag is off. |
+| **Individual component services** | `ComponentServiceClient` calls each component's own API (`/fragments`, `/limited-fragments`, `/available-limited-fragments`, `/specific-fragments`) during sync. The per-component base URI comes from the component row's `component_api_base_uri`, which is seeded from static config; `ComponentClientProperties` holds **only** connect/read timeouts, so do not look for URIs there. |
+| **Apache Pulsar** | `SyncFragmentsEvent` consumer |
 
 ---
 
-## Gotchas
+## Traps and design decisions
 
-**Component definitions come from static config, not the API.** `ComponentsInitializer` runs at startup and upserts component records from `jamf.blueprint.standaloneComponents` and `jamf.blueprint.fragmentedComponents` in `application.yml`. There is no HTTP endpoint to create or update a component at runtime. Adding or changing a component requires a code/config change and redeployment.
+**Trap: there is no HTTP endpoint to create or update a component at runtime, and that is deliberate.** `ComponentsInitializer` runs at startup and upserts component records from `jamf.blueprint.standaloneComponents` and `jamf.blueprint.fragmentedComponents` in `application.yml`. Adding or changing a component requires a code/config change and a redeploy. **Proof:** `src/main/java/**/service/ComponentsInitializer.java` is the only writer of component identity, and there are zero `@PostMapping` / `@PutMapping` / `@PatchMapping` / `@DeleteMapping` annotations anywhere under `src/main/java/**/rest/` (the grep is in the verification section, and it returning nothing is the point).
 
-**Fragment metadata lives in component backing services.** The registry stores a synced copy of fragment data. If a component service updates its fragments, the registry does not pick up changes automatically — a sync must be triggered via Pulsar (`SyncFragmentsEvent`) or the actuator endpoints. Fragment sync exceeding `DEFAULT_PAGE_SIZE` (1000) is explicitly unsupported and will throw.
+**Trap: fragment metadata is a synced copy, so the registry can be silently behind the component service.** If a component service changes its fragments, the registry does not notice. A sync must be triggered by `SyncFragmentsEvent` or an actuator call. **Sync beyond one page is unsupported and throws**: `ComponentServiceClient` fetches with a single `DEFAULT_PAGE_SIZE` request and does not paginate. Read the current constant from `client/ComponentServiceClient.java`; it was 1000 at review time, and a component that exceeds it fails the sync rather than truncating.
 
-**Feature flags and product type are evaluated on every read.** There is no caching layer on the LD evaluation path (beyond whatever the LD SDK does internally). Every `listExternal`, `listInternal`, or `findByIdentifier*` call fetches the tenant record from Tenants Service and evaluates all flags. Under high load, the tenant service becomes a dependency on the hot read path.
+**Trap: LaunchDarkly is evaluated on every read with no caching, but the tenant lookup *is* cached.** The previous version of this page claimed every read hits Tenants Service, which is wrong and led to the wrong conclusion about the hot path. `FeatureFlagService` has no `@Cacheable` and calls `ldClient.allFlagsState(...)` per request. `TenantServiceAdapter.getTenant` **is** `@Cacheable("tenants")`, with the spec in `application.yml` under `cache.caffeine.specs` (a bounded size and a write-expiry TTL at review time). So the hot-path dependency is the LD SDK's own local evaluation, and Tenants Service is only hit on cache miss or after the TTL. `ComponentServiceClientProvider` is separately cached as `component-service-clients`. **Proof:** `service/FeatureFlagService.java` (no cache annotation) versus `client/TenantServiceAdapter.java` (`@Cacheable("tenants")`).
 
-**Internal vs. external DTOs differ.** The internal DTO (`ComponentDescriptionInternalDto`) includes `capabilities` and `translator.baseUri`; the external DTO (`ComponentDescriptionExternalDto`) does not. Callers that need to know whether a component supports configuration transformation or on-save validations must use the internal endpoint.
+**Trap: a `LimitedFragment` does not appear for a tenant just because the component service enabled it.** Visibility requires a processed `SyncFragmentsEvent` for that exact tenant plus component pair (or the equivalent actuator call) to populate `limited_tenant_fragment`. "Enabled upstream but invisible in the UI" is the expected state until the event fires.
 
-**Limited fragment visibility requires an explicit sync per tenant.** A `LimitedFragment` is only visible to a tenant after a `SyncFragmentsEvent` is processed for that tenant+component pair. Simply enabling the fragment in the component's service does not automatically make it appear — the Pulsar event (or an actuator call) must fire first.
+**Trap: `AvailableFragmentsSyncFailedException` is partially suppressed.** When `syncLimitedFragments` finds fragment identifiers the component service reports as available but that are not present in the registry, it records the failure and **continues saving the known-good relations**, so the sync half-succeeds. Metric recording for this failure path is disabled in `FragmentsUpdater`, which means the failure is not visible on a dashboard. Read the logs, not the metrics.
 
-**`AvailableFragmentsSyncFailedException` is partially suppressed.** When `syncLimitedFragments` encounters fragment identifiers reported as available by the component service but not present in the registry, it records the failure but continues saving the known-good relations. Metric recording for this failure path is disabled in `FragmentsUpdater`.
+**Supported OS filtering is product-driven and can disagree with a fragment's own metadata.** The OS families shown are intersected with the set configured in `ProductCapabilitiesProperties` for the tenant's product. A fragment listing macOS support will not offer macOS to a SCHOOL tenant if SCHOOL is not configured for macOS. `docs/frontend.md` covers the same config from the UI side.
 
-**Supported OS filtering is product-driven.** The OS families shown for a component or fragment are intersected with the set configured in `ProductCapabilitiesProperties` for the tenant's product (`PRO` or `SCHOOL`). A fragment that lists `macOS` support will not show that OS to a SCHOOL tenant if `SCHOOL` is not configured to support macOS.
+**Base URL in production:** `https://<gateway>/blueprints/components-registry`, with Swagger at `/swagger-ui/index.html` on that base.
 
-**Base URL in production:** `https://<gateway>/blueprints/components-registry`. Swagger is available at `/swagger-ui/index.html` on that base.
+---
+
+## Where to find the data (verify rather than trust)
+
+The local checkout is often parked on a ticket branch (it was on `DDMR-1230-mfe-namespace` on 2026-07-29), so read through `origin/main`.
+
+```bash
+R=~/Projects/DDmR/blueprint-components-registry-service; git -C $R fetch origin -q
+git -C $R log --oneline origin/main --since=2026-07-29
+git -C $R for-each-ref --sort=-committerdate \
+  --format='%(committerdate:short) %(refname:short)' refs/remotes/origin | head -15
+
+# Routes, and the design negative: this second grep returning nothing IS the finding
+git -C $R grep -nE '@RequestMapping|@GetMapping' origin/main -- 'src/main/java/**/rest/*'
+git -C $R grep -nE '@(Post|Put|Patch|Delete)Mapping' origin/main -- 'src/main/java/**/rest/*'
+
+# Enum members and DB columns, regenerated instead of transcribed
+for e in FragmentType ComponentCapability WebApplicationCapability Product; do
+  echo "== $e"; git -C $R show origin/main:src/main/java/com/jamf/blueprint/components/model/$e.java
+done
+git -C $R ls-tree --name-only origin/main src/main/resources/db/migration/
+
+# Drifting values: sync page limit, API page size, cache specs
+git -C $R grep -n 'DEFAULT_PAGE_SIZE' origin/main -- 'src/main/java/**'
+git -C $R show origin/main:src/main/resources/application.yml | grep -nE 'default-page-size|size-parameter|caffeine|specs|maximumSize'
+
+# The caching claim: one file has no cache annotation, the other does
+git -C $R grep -n '@Cacheable' origin/main -- 'src/main/java/**'
+```
+
+Re-derive the caller list across sibling repos (run from `~/Projects/DDmR`), then check Tyk for external exposure:
+
+```bash
+grep -rIl --include=*.java --include=*.kt --include=*.yaml --include=*.yml --include=*.ts --include=*.tsx \
+  'components-registry' . | grep -v ddmr-developer-context | grep -v node_modules | cut -d/ -f2 | sort -u
+grep -rn 'blueprint-components-registry-api-external' tyk-gateway-management/prod/plans/
+```

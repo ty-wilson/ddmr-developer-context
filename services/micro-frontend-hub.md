@@ -1,189 +1,120 @@
 # Micro Frontend Hub
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-07-29. Re-verified against `origin/main` on that date: the bundler outlier claim (now corrected, see below), where `pnpm` overrides live (they moved out of `package.json`), the JSFG loader namespace behaviour (**reversed** by PI-1337, see `json-schema-form-generator.md`), and the Feature Hub service-ID list (two new IDs the old table omitted). Not re-verified and older: the CDN/SemVer resolution rules, the local-dev command list, and the CI/CD flow. Treat those as a pointer.
 
-> **Point-in-time snapshot.** Verify critical claims against the actual code before acting on them.
+**This repo maintains its own `CLAUDE.md` at its root, and that is the authoritative guide.** Read it, not this file, for structure, prerequisites, commands, and conventions. What is below is only the cross-repo context plus the traps that cost real debugging time. Run the commands in **Where to find the data** at the end before acting on any value here.
 
-The micro-frontend-hub is the Nx + pnpm monorepo that hosts every MFE app for the Blueprints/DDmR platform. All product UI lives here. MFEs are built as Module Federation remotes and loaded at runtime by a host shell via the Feature Hub pattern, which injects shared services (auth, routing, tenant, etc.) across framework boundaries. The repo ships three host shells (Angular, React/Vite, Vue) and many remote apps and shared libraries.
+The micro-frontend-hub is the Nx (package mode) + pnpm monorepo that hosts every MFE app for the Blueprints/DDmR platform. All product UI lives here. MFEs are built as Module Federation remotes and loaded at runtime by a host shell via the Feature Hub pattern, which injects shared services (auth, routing, tenant, and so on) across framework boundaries.
 
-## Monorepo Structure
+## Monorepo shape
 
-- **Toolchain**: Nx (package mode) + pnpm workspaces. Required Node/pnpm versions are declared in the repo (`.nvmrc`, `package.json` `engines`/`packageManager`) — read them there rather than trusting a version quoted here.
-- **Layout**:
-  - `apps/` — all MFE applications (remotes + shells). Each is an independent deployable unit.
-  - `libs/` — shared libraries published to the internal Artifactory npm registry (`https://artifactory.jamf.build/artifactory/api/npm/npm-local/`).
-  - `tools/cdk/` — AWS CDK infrastructure (S3 + CloudFront CDN, SemVer-resolving Lambda).
-  - `tools/utils/` — build/deployment helper scripts.
-- **Package naming**: `@jmf/` prefix for internal apps/libs (e.g., `@jmf/blueprints`). Shared service libs use the `@jamf/mfe-` prefix (e.g., `@jamf/mfe-auth-service`).
-- **Nx task graph**: `build` depends on `^build` (lib deps build first). `dev` depends on `^build`. Nx caches `build`, `test`, and `type-check` outputs. Cache stored in `.nx-cache/`.
-- **Versioning**: Driven by Conventional Commits + `nx release`. CI auto-bumps `package.json` versions and creates git tags after merge to `main`. Do not bump versions manually — Nx uses git tags as the version source of truth.
-
-## Key MFE Apps
-
-| App (`@jmf/`) | Framework | Description |
-|---|---|---|
-| `angular-shell` | Angular | Legacy host shell; uses Webpack module federation + `@angular/elements`. Provides Feature Hub services to remotes. |
-| `react-vite-shell` | React + Vite | Primary React host shell. Provides Feature Hub services, Sentry integration, routing. |
-| `vue-shell` | Vue + Vite | Vue host shell. Mirrors react-vite-shell feature set using `vue-router`. |
-| `blueprints` | React + Vite | Main Blueprints product app. Loads blueprint-component-* remotes dynamically. Owns Pact consumer contracts. |
-| `blueprint-component-declarations` | React + Vite | DDM declarations management UI within a blueprint. |
-| `blueprint-component-configuration-profiles` | React + Vite | Configuration profiles management UI within a blueprint. Loads json-schema-form-generator as a sub-remote. |
-| `blueprint-component-*` (20+ apps) | React + Vite | Individual blueprint component editors (passcode, software updates, Safari, disk management, etc.). |
-| `blueprints-component-declarations` | React + Vite | Declarations component variant used in the blueprints context. |
-| `scoping` | React + Vite | UI for the Scoping Engine — manages scopes, group assignments, and device targeting. |
-| `compliance-benchmarks` | React + Vite | Compliance benchmarks and reporting UI. Uses `ky` HTTP client, Pact tests, visual regression tests. |
-| `ascent` | React + Vite | Elevate product UI. Uses CSRF session auth, urql/GraphQL, ag-grid, chart.js, MSW for mocks. |
-| `app-switcher` | Vue + Vite | App switcher dropdown in host shells. Vue only MFE; uses `@hey-api` OpenAPI client generation. |
-| `platform-authorization` | React + Vite | API Clients management UI in Jamf Account. |
-| `json-schema-form-generator` | React + Vite | Dynamic JSON Schema form renderer, loaded as a sub-remote by configuration-profiles. |
-| `declaration-reporting-mfe` | React + Vite | DDM declaration reporting and status UI. |
-| `scim-integration` | React + Vite | SCIM provisioning configuration UI. Uses `ky`. |
-| `data-streams` | React + Vite | Data streaming configuration UI. |
-| `mms-token-management` | React + Vite | MDM token management. |
-| `configuration-profiles-migrator` | React + Vite | Tooling to migrate legacy configuration profiles. |
-| `assistant` | React + Vite | AI assistant MFE. |
-| `demo-react-remote` / `demo-vue-remote` / `demo-angular-remote` / `demo-vanilla-remote` | Various | Reference implementations for each supported framework. |
-
-## Shell Integration
-
-All MFEs integrate via the **Feature Hub** library (`@feature-hub/core`, `@feature-hub/dom`, `@feature-hub/react`).
-
-- **Host shells** call `createFeatureHub()` to instantiate services and provide them to the Feature Hub Integrator. The `<feature-app-loader>` web component loads remote apps by URL.
-- **Remote apps** declare required/optional services in `feature.ts` (the Module Federation entry point). The host injects services at mount time. Services are accessed via `featureAppManager.getFeatureAppScope()` bindings.
-- **Module Federation**: Vite remotes use `@module-federation/vite`. Angular shell uses Webpack. Remote entry is exposed as `remoteEntry.js`. Vite remotes place assets under `/assets/`; Webpack remotes place them at root.
-- **CSS scoping**: Vite remotes use `@jmf/vite-css-injection` to attach styles to the `feature-app-container` web component rather than `<head>`.
-- **Design system**: All apps consume Jamf Nebula web components (`@jamf/design-system-web-components-next`) and shared tokens (`@jamf/design-system-shared`).
-
-### Feature Hub Services (libs/)
-
-Services are injected by the host and consumed by remotes via Feature Hub bindings:
-
-| Service ID | Lib | Purpose |
-|---|---|---|
-| `jamf:auth_service` | `auth-service` | Auth0 JWT token + refresh subscription |
-| `jamf:routing_service` | `routing-service` | `navigate()` + common link constants |
-| `jamf:tenant_service` | `tenant-service` | Tenant/environment metadata |
-| `jamf:gateway_base_url_service` | `gateway-base-url-service` | Tyk API gateway base URL |
-| `jamf:groups_service` | `groups-service` | Smart Groups access |
-| `jamf:user_preferences_service` | `user-preferences-service` | User preference store |
-| `jamf:permissions_service` | `permissions-service` | Admin permission flags |
-| `jamf:organization_service` | `organization-service` | Organization data store |
-| `jamf:feature_hub_provider_service` | `feature-hub-provider-service` | Shares the Feature Hub instance with sub-remotes |
-| `jamf:blueprints-service` | `blueprints-service` | Communication channel between Blueprints and its component remotes |
-| `jamf:json_schema_form_generator_service` | `json-schema-form-generator-service` | Bridge between JSON Schema Form Generator and Configuration Profiles |
-| `jamf:nav_prevention_service` | `nav-prevention-service` | Blocks navigation when a form is dirty |
-| `jamf:ai_service` | `ai-service` | Sends prompts to the AI Assistant from host apps |
-| `jamf:analytics_service` | `analytics-service` | Pendo/Gainsight analytics platform access |
-| `jamf:app_store_and_in_house_apps_service` | `app-store-and-in-house-apps-service` | AppStore + InHouse app list |
-
-## Build and Deploy
-
-**Building:**
-```sh
-pnpm build          # build only affected packages (Nx affected)
-pnpm build:all      # build everything
-pnpm nx build @jmf/blueprints  # build a specific app
+```
+apps/    # MFE remotes + host shells (Angular, React/Vite, Vue). Each an independent deployable.
+libs/    # Shared libraries and Feature Hub services, published to internal Artifactory
+tools/cdk/    # AWS CDK infra (S3 + CloudFront CDN, SemVer-resolving Lambda)
+tools/utils/  # Build/deployment helper scripts
 ```
 
-**Environments**: `sbox`, `dev`, `stage`, `prod`. Sandbox and Staging are accessible only via Jamf Trust VPN.
+- Required Node/pnpm versions are declared in the repo (`.nvmrc`, `package.json` `engines`/`packageManager`). Read them there rather than trusting a version quoted here.
+- **Package naming:** `@jmf/` prefix for internal apps/libs (e.g. `@jmf/blueprints`). Shared service libs use `@jamf/mfe-` (e.g. `@jamf/mfe-auth-service`).
+- Artifactory npm registry: `https://artifactory.jamf.build/artifactory/api/npm/npm-local/`.
+- **Nx task graph:** `build` and `dev` both depend on `^build`, so lib deps build first. Nx caches `build`, `test`, and `type-check`; cache in `.nx-cache/`.
 
-**CDN deployment**: Built assets are uploaded to S3 + CloudFront (`cdn.mfe.jamf.io`). A SemVer-resolving Lambda sits in front, enabling partial version pinning:
-- `/my-app/1.2.1` → exact version
-- `/my-app/1.2` → latest patch for that minor
-- `/my-app/1` → latest minor and patch for that major
-- `/my-app/latest` → most recently deployed version
-- `/my-app/stable` → manually promoted stable release via GitHub Releases
+Do not read an app inventory or a library list out of this file. `ls apps/` and `ls libs/` are one command away and both directories change weekly (see the verification section). The parts worth knowing:
 
-**CI/CD flow (GitHub Actions)**:
-1. PR with `deploy:affected` label → deploys to Sandbox.
-2. Merge to `main` → `main_bump_versions.yml` auto-bumps package versions, creates git tags, pushes a bump commit.
-3. Bump commit triggers `main_apps_deploy.yml` → deploys to Dev, Staging, then Prod.
-4. Opt-in manual prod approval: add `require_manual_prod_approval` tag to `project.json`.
-5. Use GitHub Merge Queue (not direct merge) — this is enforced.
+- `blueprints` is the host that mounts the `blueprint-component-*` remotes. There are many of those, one per Blueprint step.
+- `angular-shell` / `react-vite-shell` / `vue-shell` are host shells used for local development against a real Feature Hub.
+- `json-schema-form-generator` is a remote loaded *by* other remotes, not by the shell. It is also the name of a separate sibling repo; see the trap in `docs/frontend.md` before reasoning about it.
+- `demo-{react,vue,angular,vanilla}-remote` are reference implementations, not products.
 
-**Versioning**: Nx `nx release` with `specifierSource: conventional-commits` and `currentVersionResolver: git-tag`. Never bump `package.json` versions manually.
+## Shell integration
 
-## Local Development
+All MFEs integrate via **Feature Hub** (`@feature-hub/core`, `@feature-hub/dom`, `@feature-hub/react`).
 
-**Prerequisites:**
-```sh
-pnpm install
-cp .env.example.local .env.local   # set VITE_TYK_GATE_URL, org ID, auth token
+- **Host shells** call `createFeatureHub()` to instantiate services and provide them to the Feature Hub Integrator. The `<feature-app-loader>` web component loads remotes by URL.
+- **Remote apps** declare required/optional services in `feature.ts`/`feature.tsx` (the Module Federation entry point). The host injects services at mount time; remotes access them through `featureAppManager.getFeatureAppScope()` bindings.
+- **Module Federation:** remote entry is exposed as `remoteEntry.js`. Vite remotes place assets under `/assets/`; Webpack remotes place them at root.
+- **CSS scoping:** remotes attach styles to the `feature-app-container` web component (shadow DOM) via `@jmf/vite-css-injection` / `@jmf/webpack-css-injection` rather than `<head>`.
+- **Design system:** Jamf Nebula web components (`@jamf/design-system-web-components-next`) plus shared tokens (`@jamf/design-system-shared`).
+
+Feature Hub services are discovered by **string ID at runtime**, which means a typo is a runtime failure rather than a build failure. IDs follow `jamf:<name>_service` (mostly underscored, but `jamf:blueprints-service` and `jamf:oidc-sso-service` are hyphenated, so do not assume the separator). Regenerate the current ID list with the grep in the verification section rather than reading a table here; the set grows, and IDs added after this review include `jamf:division_service` and `jamf:oidc-sso-service`.
+
+## Build, deploy, and CDN
+
+**Environments:** `sbox`, `dev`, `stage`, `prod`. Sandbox and Staging are reachable only over Jamf Trust VPN.
+
+**CDN:** built assets go to S3 + CloudFront at `cdn.mfe.jamf.io`, fronted by a SemVer-resolving Lambda, so a partial version is a valid URL:
+
+- `/my-app/1.2.1` exact version
+- `/my-app/1.2` latest patch for that minor
+- `/my-app/1` latest minor and patch for that major
+- `/my-app/latest` most recently deployed version
+- `/my-app/stable` manually promoted release via GitHub Releases
+
+**CI/CD shape** (workflow filenames drift; read `.github/workflows/` for the current ones):
+
+1. A PR carrying the `deploy:affected` label deploys to Sandbox.
+2. Merge to `main` triggers a version-bump workflow that bumps `package.json` versions, tags, and pushes a bump commit.
+3. That bump commit, not the merge, triggers the deploy workflow: Dev, then Staging, then Prod.
+4. Prod approval can be made manual per app by adding a `require_manual_prod_approval` tag to its `project.json`.
+5. Merges go through the GitHub Merge Queue; direct merge is not available.
+
+**Versioning:** Nx `nx release` with `specifierSource: conventional-commits` and `currentVersionResolver: git-tag`.
+
+## Traps
+
+**Trap: never bump `package.json` versions by hand.** `nx release` resolves the current version from **git tags**, so a manual bump desyncs the version source of truth from the tags and the next automated bump computes the wrong number. Let CI do it.
+
+**Trap: a Vite remote cannot be served from `dev` mode for host consumption.** `dev` does not emit a loadable `remoteEntry.js`, so a shell pointed at a dev server gets a remote that never mounts, usually with no clear error. Build the remote and `nx preview` it, then wire that URL into the host. Observed against `@module-federation/vite` 1.7.1 (the version pinned in `apps/blueprint-component-declarations/package.json` as of 2026-07-29); re-check if that major moves, since dev-mode federation support is exactly the kind of thing it would add.
+
+**Trap: the `latest` symlink must exist locally.** When a host loads a locally-built remote and gets a 404, the symlink under `dist/apps/<your-app>/` is usually missing. `pnpm nx link-latest @jmf/your-app` creates it.
+
+**Trap: `VITE_TYK_GATE_URL` missing makes API calls fail silently.** Copy `.env.example.local` to `.env.local` at the root and fill in gateway URL, org ID, and token before starting any app. Each app can also carry its own `.env` (from `.env.example.sbox` or similar); the root `.env.local` is the fallback global override, so a stale per-app `.env` wins over a correct root one.
+
+**Trap: `"The required Feature Service 'jamf:auth_service' is not registered"` points at the host, not the remote.** The remote declared the dependency correctly; the shell's `createFeatureHub()` call is missing that service. Fix the shell's service registration.
+
+**Trap: CloudFront serves stale deployments.** Check `x-cache` and `last-modified` on the remote entry (`curl -I 'https://cdn.mfe.jamf.io/my-app/stable/assets/remoteEntry.js'`) before concluding a deploy did not land. Manual CDN invalidation is a Pandocats request.
+
+**Trap: cross-package dependency versions drift, and nothing fails loudly.** Two apps resolving different versions of the same Nebula or React package on one page is a runtime-only failure. `pnpm sync:list` reports mismatches and `pnpm sync:fix` resolves them (syncpack). `@jmf/vite-plugin-nebula-rename` exists specifically to survive multiple Nebula versions coexisting in one page, which is a symptom of this drift rather than a fix for it. Deliberately no app count here: the number is `ls apps/ | wc -l` and it moves.
+
+**Confirm your app's bundler in its own config before reusing build utilities.** The Angular shell is the Webpack outlier, but it is *not* the only one: `demo-angular-remote` is also Webpack, so "everything except angular-shell is Vite" is wrong and there is nothing stopping a new Angular remote from being added. Check for a `webpack.config.js` in the app directory (grep in the verification section) rather than inferring from framework.
+
+**Trap: `pnpm` overrides are not in `package.json` any more.** They live under `overrides:` in **`pnpm-workspace.yaml`**, alongside `blockExoticSubdeps` and `minimumReleaseAge`. Several are deliberate transitive-vulnerability pins (ejs, esbuild, tar, tmp, ws, glob at the time of review); do not remove one because a lockfile suggests it is redundant. Read the live block from `pnpm-workspace.yaml` rather than any list here, because the set changes with each advisory.
+
+**Pact "Can I Deploy" failures:** the GitHub Action output contains a verification path. Append it to `https://pactbroker.jamf.build/` to see which contract broke.
+
+**Sandbox and Staging require Jamf Trust VPN.** Apps deployed there are not publicly reachable, so a connection failure from outside the VPN is not a deploy failure.
+
+## Where to find the data (verify rather than trust)
+
+Read the repo's own `CLAUDE.md` first. Everything below regenerates content that used to be transcribed into this file.
+
+```bash
+R=~/Projects/DDmR/micro-frontend-hub; git -C $R fetch origin -q
+git -C $R log --oneline origin/main --since=2026-07-29
+git -C $R for-each-ref --sort=-committerdate \
+  --format='%(committerdate:short) %(refname:short)' refs/remotes/origin | head -15
+
+# App and library inventory, plus how many there actually are right now
+git -C $R ls-tree --name-only origin/main apps/ libs/
+
+# Which apps are NOT Vite (the Webpack outliers). Do not assume this is only angular-shell.
+git -C $R ls-tree -r --name-only origin/main | grep -E 'apps/[^/]+/webpack'
+
+# Current Feature Hub service IDs (regenerates the service table)
+git -C $R grep -oh "'jamf:[a-z_-]*'" origin/main -- 'libs/*/src/**' | sort -u
+
+# Security pins and workspace-level dependency policy (NOT in package.json)
+git -C $R show origin/main:pnpm-workspace.yaml
+
+# Node/pnpm versions, as declared rather than as remembered
+git -C $R show origin/main:package.json | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["engines"],d["packageManager"])'
+git -C $R show origin/main:.nvmrc
 ```
 
-**Standalone (isolated, no host):**
-```sh
-pnpm nx dev @jmf/blueprints
-# or from the app directory:
-pnpm dev
+Before concluding an app, lib, or service ID does not exist, check unmerged work. This repo has many concurrent branches and also carries in-repo worktrees under `.claude/worktrees/`, which a plain `grep -r` will hit and misattribute as `main`:
+
+```bash
+git -C $R for-each-ref --sort=-committerdate \
+  --format='%(committerdate:short) %(refname:short)' refs/remotes/origin | head -30
 ```
-Each remote app has a `main.ts` that bootstraps it with `@jmf/mock-services` standing in for Feature Hub services. This is the recommended way to develop in isolation.
-
-**Inside a shell (with host):**
-```sh
-# Start a shell and auto-build all linked remotes first:
-pnpm nx dev:withApps @jmf/react-vite-shell
-pnpm nx dev:withApps @jmf/vue-shell
-pnpm nx dev:withApps @jmf/angular-shell
-
-# or from the root:
-pnpm dev:react-shell
-pnpm dev:vue-shell
-pnpm dev:angular-shell
-```
-`implicitDependencies` in each shell's `project.json` defines which remotes are built before the shell starts.
-
-**Serving a built remote for host consumption (preview mode):**
-```sh
-pnpm nx preview @jmf/blueprint-component-declarations
-# Remote becomes available at http://localhost:XXXX
-```
-Note: Vite cannot serve MFE remotes from dev mode — you must use `preview` (built output) when wiring a remote into a host.
-
-**Formatting / linting:**
-```sh
-pnpm nx format:check   # check Prettier
-pnpm nx format:write   # auto-fix
-pnpm nx run-many -t lint
-```
-
-**Testing:**
-```sh
-pnpm test                        # Vitest, affected only
-pnpm nx test @jmf/blueprints     # single project
-pnpm nx integration-tests @jmf/blueprints  # Playwright E2E
-pnpm nx integration-tests-pact @jmf/blueprints  # Pact consumer contracts
-```
-
-## Shared Libraries and Utilities
-
-- **`@jamf/mfe-blueprints-components`** — Shared React components for blueprint component MFEs (forms, filters, animations). Not a Feature Hub service — imported directly as an npm dependency.
-- **`@jmf/react-remote-wrapper`** — React bootstrapping utilities and `AuthProvider` for standalone dev.
-- **`@jmf/react-auth-provider`** — Auth0 provider for React apps in standalone/local dev.
-- **`@jmf/mock-services`** — Mock implementations of all Feature Hub services for standalone dev.
-- **`@jmf/localization`** — react-i18next bootstrapping; used by all React apps.
-- **`@jmf/vite-css-injection`** / **`@jmf/webpack-css-injection`** — Injects scoped CSS into the `feature-app-container` element.
-- **`@jamf/mfe-vite-remote-module-loader`** / **`@jamf/mfe-webpack-remote-module-loader`** — Dynamic remote module loading for Feature Hub.
-- **`@jmf/viteconfig-react`** / **`@jmf/viteconfig-lib`** — Shared Vite configs for React apps and libs.
-- **`@jmf/bundler-utils`** — Shared build helpers (`parseAppName`, `getDistPath`, etc.).
-- **`@jmf/tsconfig`** — Shared TypeScript base configs.
-- **`@jmf/eslint-config`** — Shared ESLint rules.
-- **`@jmf/vite-plugin-nebula-rename`** — Vite plugin to resolve Nebula web component version mismatches when multiple versions exist in the same page.
-- **CSRF libs** (`@jamf/mfe-csrf-axios/fetch/ky/urql/hey-api-client-fetch/core`) — CSRF token injection for each supported HTTP client. Required for apps using session-based (cookie) auth (e.g., Elevate/ascent).
-- **`@jmf/deployment-shared`** — Shared CDK/deployment utilities.
-- **`libs/automation`** — Nx generators for scaffolding new React or Vue remote apps.
-
-## Gotchas
-
-- **Vite remotes cannot be served from `dev` mode for host consumption.** Build and `preview` the remote; only then can it be loaded by URL into a shell.
-- **`latest` symlink must exist locally.** When developing against a locally-built remote, run `pnpm nx link-latest @jmf/your-app` if the `latest` symlink is missing under `dist/apps/your-app/`.
-- **`VITE_TYK_GATE_URL` is required.** Without it, API calls fail silently. Copy `.env.example.local` to `.env.local` at the root and fill in the gateway URL, org ID, and token before starting any app.
-- **Per-app `.env` files.** Each app can also have its own `.env` (copied from `.env.example.sbox` or similar). The root `.env.local` is a fallback global override.
-- **Feature Service not registered error.** If you see `"The required Feature Service 'jamf:auth_service' is not registered"`, the host shell's `createFeatureHub()` call is missing that service. Check the shell's service registration, not the remote.
-- **CDN CloudFront caching.** Stale deployments can persist. Check `x-cache` and `last-modified` response headers (`curl -I 'https://cdn.mfe.jamf.io/my-app/stable/assets/remoteEntry.js'`). Contact Pandocats for manual CDN invalidation if needed.
-- **Sandbox and Staging require Jamf Trust VPN.** Apps deployed there are not publicly accessible.
-- **Never manually bump package versions.** CI uses git tags as the source of truth via `nx release`. Manual bumps will desync the versioning system.
-- **Pact "Can I Deploy" failures.** If the CI Pact check fails, inspect results at `https://pactbroker.jamf.build/` — copy the verification path from the GitHub Action output and append it to the broker URL.
-- **`syncpack` for dependency consistency.** Run `pnpm sync:list` to find cross-package version mismatches and `pnpm sync:fix` to resolve them. Version drift across ~50 apps is a known ongoing maintenance concern.
-- **Angular shell uses Webpack; all other apps use Vite.** Do not mix bundler-specific config utilities between them.
-- **`@nx/devkit>ejs` override.** The root `package.json` includes pnpm overrides for several transitive vulnerabilities (ejs, esbuild, tar, tmp, fast-xml-parser). These are intentional security pins — do not remove.
