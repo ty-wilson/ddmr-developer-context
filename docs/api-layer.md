@@ -1,6 +1,6 @@
 # API Layer
 
-Last reviewed: 2026-06-24; amended 2026-07-29 to mark the sidecar-port upstreams as non-durable and to add the pod-level scope trap. **Not re-verified:** the route tables, Tyk product lists, and whitelist contents all date from the 2026-06-24 pass — read the ApiDefinitions in `tyk-gateway-management` and the generated OpenAPI spec for current truth.
+Last reviewed: 2026-06-24; amended 2026-07-29 to mark the sidecar-port upstreams as non-durable and to add the pod-level scope trap. **Not re-verified:** the route tables, Tyk product lists, and whitelist contents all date from the 2026-06-24 pass. Read the ApiDefinitions in `tyk-gateway-management` and the generated OpenAPI spec for current truth.
 
 ## Overview
 
@@ -41,9 +41,9 @@ Each file is a Kubernetes CRD with `kind: ApiDefinition` or `kind: SecurityPolic
 ### Regions
 
 Production and staging products use per-region files:
-- `use1` / `use2` — US East (commercial)
-- `euc1` — EU (Frankfurt)
-- `apne1` — Asia-Pacific (Tokyo)
+- `use1` / `use2`: US East (commercial)
+- `euc1`: EU (Frankfurt)
+- `apne1`: Asia-Pacific (Tokyo)
 
 HC stage uses a single-region US deployment.
 
@@ -61,8 +61,8 @@ Each ApiDefinition specifies:
 - **`proxy.target_url`**: The upstream service. In-cluster services use `http://<service>.<namespace>:<port>`. Some services are fronted by a regional platform URL (e.g., `https://device-inventory.use2.platform.jamfapps.io`).
 - **`proxy.listen_path`**: The path prefix the gateway exposes. It is stripped (`strip_listen_path: true`) before forwarding.
 - **`custom_middleware_bundle`**: A zip file identifying the Tyk plugin to run. DDmR uses two main bundles:
-  - `jwt-to-m2m-*.zip` — validates an internal M2M JWT and injects an M2M header for the upstream service
-  - `auth0-to-m2m-with-authorization-*.zip` — validates an external (Auth0/CSA) JWT and performs tenant authorization before injecting M2M headers
+  - `jwt-to-m2m-*.zip`: validates an internal M2M JWT and injects an M2M header for the upstream service
+  - `auth0-to-m2m-with-authorization-*.zip`: validates an external (Auth0/CSA) JWT and performs tenant authorization before injecting M2M headers
 - **JWT configuration**: `enable_jwt: true`, `jwt_signing_method: rsa`, with `jwt_scope_to_policy_mapping` driving access control per JWT scope claim.
 - **`version_data.versions.Default.global_headers_remove`**: Tyk strips `x-tenantid` from inbound client requests before forwarding, preventing spoofing. The JWT sidecar injects the verified header.
 
@@ -79,7 +79,7 @@ Listen paths are what external callers use; the gateway strips the prefix before
 | `scope-eng` | `/scoping` (prod, stage→integration); `/scope-eng-prerelease` (stage→ddmr-stage) | `scoping-engine-svc.ddmr-<env>:7070` | Both |
 | `dss` | `/dss` | `declaration-storage-svc.ddmr-<env>:7070` | Both |
 | `declaration-service` | `/declaration-service` | `declaration-service.ddmr-<env>:7070` (internal); `declaration-service-svc.ddmr-<env>:7070` (external) | Both |
-| `blueprint-components` | `/blueprints/components/{sw-update,declarations,cps,declaration-service,app-service,sls}` | Multiple — `/blueprints/components/declaration-service` targets `declaration-service.ddmr-<env>:7070` with `X-Forwarded-Prefix` header | Internal (UI variant for app-service is external) |
+| `blueprint-components` | `/blueprints/components/{sw-update,declarations,cps,declaration-service,app-service,sls}` | Multiple: `/blueprints/components/declaration-service` targets `declaration-service.ddmr-<env>:7070` with `X-Forwarded-Prefix` header | Internal (UI variant for app-service is external) |
 | `app-declaration-service` | `/app-declaration-service` | `bcads.use2.platform.jamfapps.io` | Internal |
 | `declaration-reporting-service` | `/ddm/report` | `drs.use2.platform.jamfapps.io` | Internal |
 | `blueprint-management` | `/blueprints/management` | `blueprint-management-service.ocean-prod:8080` | Both |
@@ -98,9 +98,9 @@ Services running as in-cluster pods (scoping-engine, declaration-storage-service
 | `/declaration-service/...` | `declaration-service-product` | Direct route. Used by tooling and direct callers. |
 | `/blueprints/components/declaration-service/...` | `blueprint-components-api-product` | Bundle scope shared across `sw-update`, `declarations`, `cps`, `declaration-service`, `app-service`, `sls`. Used by callers (e.g. blueprint-management-service, MFE traffic, the declaration-service component-test suite when run against stable-dev) that traverse the unified blueprint-components surface. |
 
-The two scopes are not interchangeable on a given URL — Tyk's SecurityPolicy is bound to specific ApiDefinitions/listen paths.
+The two scopes are not interchangeable on a given URL. Tyk's SecurityPolicy is bound to specific ApiDefinitions/listen paths.
 
-Both the gateway and the in-pod `JwtFilter` enforce scope. The pod's `JwtScopeValidator` (`src/main/kotlin/com/jamf/declaration/auth/JwtFilter.kt`) accepts the JWT if it carries **any** of the configured `requiredScopes`. The default set is the union of the Tyk products that route to this pod (`{declaration-service-product, blueprint-components-api-product}` at the time of writing — read the current value from the service's config), so a request that survives Tyk's path-bound check on either route also satisfies the pod-level check. **Trap: adding a third Tyk route to this pod requires widening the pod-level set too**, or Tyk will authorize traffic that the pod then rejects. Pre-PR-#158 (DDMR-1088), `JwtScopeValidator` accepted only a single scope, so traffic via the blueprint-components route would have been rejected by the pod even though Tyk authorized it; PR #158 broadened it to ANY-match.
+Both the gateway and the in-pod `JwtFilter` enforce scope. The pod's `JwtScopeValidator` (`src/main/kotlin/com/jamf/declaration/auth/JwtFilter.kt`) accepts the JWT if it carries **any** of the configured `requiredScopes`. The default set is the union of the Tyk products that route to this pod (`{declaration-service-product, blueprint-components-api-product}` at the time of writing; read the current value from the service's config), so a request that survives Tyk's path-bound check on either route also satisfies the pod-level check. **Trap: adding a third Tyk route to this pod requires widening the pod-level set too**, or Tyk will authorize traffic that the pod then rejects. Pre-PR-#158 (DDMR-1088), `JwtScopeValidator` accepted only a single scope, so traffic via the blueprint-components route would have been rejected by the pod even though Tyk authorized it; PR #158 broadened it to ANY-match.
 
 ---
 
@@ -108,7 +108,7 @@ Both the gateway and the in-pod `JwtFilter` enforce scope. The pod's `JwtScopeVa
 
 All scoping-engine routes are under `/api/v1`. Tyk strips `/scoping`, so the full external path is `/scoping/api/v1/...`.
 
-Paths and their purpose are the durable contract here. The authoritative, always-current list is the generated OpenAPI spec (`reusable-api-export.yml` publishes it after each release — see `cicd-pipeline.md`); use this table for orientation and that spec for certainty.
+Paths and their purpose are the durable contract here. The authoritative, always-current list is the generated OpenAPI spec (`reusable-api-export.yml` publishes it after each release; see `cicd-pipeline.md`); use this table for orientation and that spec for certainty.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -135,7 +135,7 @@ The external Tyk product for scoping-engine exposes a whitelist of routes (`/api
 
 Every request to a DDmR service must carry an `X-TenantId` header. The JWT sidecar injects this from the verified JWT before it reaches the application. If the header is absent, `AbstractApiRequest` throws `ResponseStatusException(401, "No tenant identifier")`.
 
-`X-EnvironmentId` is optional and treated as a tenant-scoped environment discriminator. If absent, it resolves to `null` and most handlers proceed without filtering by environment. Neither header is set by API clients — both are injected by the authentication infrastructure.
+`X-EnvironmentId` is optional and treated as a tenant-scoped environment discriminator. If absent, it resolves to `null` and most handlers proceed without filtering by environment. Neither header is set by API clients. Both are injected by the authentication infrastructure.
 
 ### Request Serialization
 
@@ -159,9 +159,9 @@ Additional key-value pairs may appear alongside `description` for structured err
 
 The following paths are configured as `ignored` in Tyk (bypassing JWT auth) and in the sidecar `open` list:
 
-- `HEAD /api/v1` — connectivity check
-- `GET /api-docs(.*)`  — OpenAPI docs (dev/stage only)
-- `GET /api-schema(.*)` — OpenAPI schema (dev/stage only)
+- `HEAD /api/v1`: connectivity check
+- `GET /api-docs(.*)`: OpenAPI docs (dev/stage only)
+- `GET /api-schema(.*)`: OpenAPI schema (dev/stage only)
 
 Actuator endpoints (`/actuator`, `/actuator-jwt`) are blacklisted at the Tyk layer, preventing external access even though Spring exposes them internally.
 
@@ -175,13 +175,13 @@ Actuator endpoints (`/actuator`, `/actuator-jwt`) are blacklisted at the Tyk lay
 
 **Other**: Blueprint Management, Declaration Reporting Service, and App Declaration Service all call DSS for declaration content or device data.
 
-**Jamf Pro (JSS) → DSS**: Jamf Pro also calls DSS, and as of **2026-01-22** it does so through the **internal Tyk gateway** (`https://{us|eu|apac}.int.apigw.jamf.com/dss`) by default. The DSS URL each instance uses comes from the `com.jamfsoftware.dme.dss.url.override` knob if set, otherwise the regional default — which was repointed from the direct `dss.{region}.services.jamfcloud.com` URL to the Tyk gateway in `jamf/atlas-global-resources` (`pipeline.yaml`). The Jamf Pro code that reads the knob (with the Tyk fallback) shipped in **11.26.0** (jss PR #490425 / JPCFM-5293; planned for 11.25 but missed that cut). Consequence: instances without a per-instance override now reach DSS over Tyk, which presents the instance's *real* M2M tenant to DSS — the trigger for "Tenant mismatch" 401s on instances whose declarations were stored under an older/generated tenant (see `services/declaration-storage-service.md` and `auth-and-tenancy.md`). A later, separate step, `com.jamfsoftware.dme.dss.use.m2m.auth` (11.28.0), switches the DSS client's own token from CSA to M2M (default false).
+**Jamf Pro (JSS) → DSS**: Jamf Pro also calls DSS, and as of **2026-01-22** it does so through the **internal Tyk gateway** (`https://{us|eu|apac}.int.apigw.jamf.com/dss`) by default. The DSS URL each instance uses comes from the `com.jamfsoftware.dme.dss.url.override` knob if set, otherwise the regional default, which was repointed from the direct `dss.{region}.services.jamfcloud.com` URL to the Tyk gateway in `jamf/atlas-global-resources` (`pipeline.yaml`). The Jamf Pro code that reads the knob (with the Tyk fallback) shipped in **11.26.0** (jss PR #490425 / JPCFM-5293; planned for 11.25 but missed that cut). Consequence: instances without a per-instance override now reach DSS over Tyk, which presents the instance's *real* M2M tenant to DSS, the trigger for "Tenant mismatch" 401s on instances whose declarations were stored under an older/generated tenant (see `services/declaration-storage-service.md` and `auth-and-tenancy.md`). A later, separate step, `com.jamfsoftware.dme.dss.use.m2m.auth` (11.28.0), switches the DSS client's own token from CSA to M2M (default false).
 
 ---
 
 ## M2M Auth for Outbound Calls
 
-M2M tokens are fetched via the `robocop` library (`com.jamf.stratus.m2m.robocop`). `M2MService.getRestToken(tenantId, credentials)` fetches a per-tenant token; credentials come from AWS Secrets Manager. `m2m.env` selects the Robocop environment (`DEV`, `STAGE`, `PROD_US`, `PROD_EU`, `PROD_AP`); `m2m.customEnv.url` overrides the endpoint for HC and perf environments. Tenant must be a valid UUID — `M2MTokenAcquisitionException(retryable=false)` is thrown otherwise. See `auth-and-tenancy.md` for the full JWT sidecar description.
+M2M tokens are fetched via the `robocop` library (`com.jamf.stratus.m2m.robocop`). `M2MService.getRestToken(tenantId, credentials)` fetches a per-tenant token; credentials come from AWS Secrets Manager. `m2m.env` selects the Robocop environment (`DEV`, `STAGE`, `PROD_US`, `PROD_EU`, `PROD_AP`); `m2m.customEnv.url` overrides the endpoint for HC and perf environments. Tenant must be a valid UUID: `M2MTokenAcquisitionException(retryable=false)` is thrown otherwise. See `auth-and-tenancy.md` for the full JWT sidecar description.
 
 ---
 

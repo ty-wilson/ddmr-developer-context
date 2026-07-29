@@ -73,12 +73,12 @@ These tables are the expensive-to-rediscover core of this document: rebuilding t
 
 | Topic (short name)          | Producer    | Known Consumers | Schema | Compat |
 |-----------------------------|-------------|-----------------|--------|--------|
-| `apple-media-app-changed`   | mms-pigeon  | (none registered) | On   | —      |
-| `apple-media-asset-assignment` | mms-pigeon | (none registered) | On  | —      |
-| `apple-media-asset-changed` | mms-pigeon  | (none registered) | On   | —      |
-| `apple-media-media-changed` | mms-pigeon  | (none registered) | On   | —      |
-| `apple-media-token-state`   | mms-pigeon  | (none registered) | On   | —      |
-| `apple-media-user-state`    | mms-pigeon  | (none registered) | On   | —      |
+| `apple-media-app-changed`   | mms-pigeon  | (none registered) | On   | (none) |
+| `apple-media-asset-assignment` | mms-pigeon | (none registered) | On  | (none) |
+| `apple-media-asset-changed` | mms-pigeon  | (none registered) | On   | (none) |
+| `apple-media-media-changed` | mms-pigeon  | (none registered) | On   | (none) |
+| `apple-media-token-state`   | mms-pigeon  | (none registered) | On   | (none) |
+| `apple-media-user-state`    | mms-pigeon  | (none registered) | On   | (none) |
 
 ### pdd/compliance-benchmark
 

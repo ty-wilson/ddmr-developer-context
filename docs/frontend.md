@@ -15,7 +15,7 @@ micro-frontend-hub/
 │   └── utils/   # Build/deployment scripts
 ```
 
-All packages use the `@jmf/` prefix (e.g., `@jmf/blueprints`, `@jmf/compliance-benchmarks`). Commit messages must follow Conventional Commits; CI handles version bumps automatically — never bump `package.json` versions manually.
+All packages use the `@jmf/` prefix (e.g., `@jmf/blueprints`, `@jmf/compliance-benchmarks`). Commit messages must follow Conventional Commits; CI handles version bumps automatically. Never bump `package.json` versions manually.
 
 ### Tooling
 
@@ -46,10 +46,10 @@ Notable apps in `apps/`:
 | `compliance-benchmarks` | `@jmf/compliance-benchmarks` | React + Vite | Compliance benchmarks UI |
 | `scoping` | `@jmf/scoping` | React + Vite | Device scoping / group assignment UI |
 | `platform-authorization` | `@jmf/platform-authorization` | React + Vite | API client management in Jamf Account |
-| `ascent` / `assistant` / `data-streams` | — | — | Additional DDmR-owned production apps |
-| `declaration-reporting-mfe` / `mms-token-management` / `scim-integration` | — | — | Additional DDmR-owned production apps |
-| `angular-shell` / `vue-shell` / `react-vite-shell` | — | Angular / Vue / React | Local development host shells |
-| `demo-{react,vue,vanilla}-remote` | — | Various | Reference implementations for each framework |
+| `ascent` / `assistant` / `data-streams` | n/a | n/a | Additional DDmR-owned production apps |
+| `declaration-reporting-mfe` / `mms-token-management` / `scim-integration` | n/a | n/a | Additional DDmR-owned production apps |
+| `angular-shell` / `vue-shell` / `react-vite-shell` | n/a | Angular / Vue / React | Local development host shells |
+| `demo-{react,vue,vanilla}-remote` | n/a | Various | Reference implementations for each framework |
 
 There are also many smaller `blueprint-component-*` apps (e.g., `blueprint-component-ddm-passcode`, `blueprint-component-sw-update`) representing individual Blueprint step MFEs.
 
@@ -61,9 +61,9 @@ There are also many smaller `blueprint-component-*` apps (e.g., `blueprint-compo
 
 Every MFE remote exposes a `feature.ts` / `feature.tsx` entry point that exports a `FeatureAppDefinition` (from `@feature-hub/core`). The definition declares:
 
-- `dependencies.featureServices` — Feature Hub services the MFE requires (e.g., `jamf:auth_service`, `jamf:routing_service`)
-- `ownFeatureServiceDefinitions` — services the MFE provides to child remotes it loads (e.g., `blueprints` provides `jamf:blueprints-service`)
-- `attachTo(element: HTMLElement)` — mounts the React/Vue/Angular app into the provided DOM element
+- `dependencies.featureServices`: Feature Hub services the MFE requires (e.g., `jamf:auth_service`, `jamf:routing_service`)
+- `ownFeatureServiceDefinitions`: services the MFE provides to child remotes it loads (e.g., `blueprints` provides `jamf:blueprints-service`)
+- `attachTo(element: HTMLElement)`: mounts the React/Vue/Angular app into the provided DOM element
 
 The host shell calls `createFeatureHub(...)` to initialize all services, then uses the `<feature-app-loader>` web component (from `@feature-hub/dom`) to load and mount remotes by URL.
 
@@ -130,14 +130,14 @@ EventBridge scheduler (hourly)
 
 An internal ALB at `{env}.mdm-schema.jamf.build` routes to a path-mapping Lambda (inline Node.js). Routes:
 
-- `GET /v1/metadata/{id}/{payloadType}` — JSON schema for a config profile payload
-- `GET /v1/ui-schema/{schemaVersion}/{payloadType}` — UI schema
-- `GET /v1/translations/{schemaVersion}/{payloadType}/{locale}` — translations
-- `GET /v1/declarative/{schemaVersion}/{category}/{shortType}` — raw Apple DDM declaration schema
+- `GET /v1/metadata/{id}/{payloadType}`: JSON schema for a config profile payload
+- `GET /v1/ui-schema/{schemaVersion}/{payloadType}`: UI schema
+- `GET /v1/translations/{schemaVersion}/{payloadType}/{locale}`: translations
+- `GET /v1/declarative/{schemaVersion}/{category}/{shortType}`: raw Apple DDM declaration schema
 
 Environments: `dev.mdm-schema.jamf.build`, `stage.mdm-schema.jamf.build`, `prod.mdm-schema.jamf.build`.
 
-**Two version notions, and they can differ.** The ingest keeps a "latest ingested" version in SSM (`/mdm_schema/version/device-management`) — that's the version new content is uploaded *under*. `GET /v1/version` returns the "last **supported** version", which is what the MFEs request and can *lag* the ingested one. So freshly-ingested schema/translations can exist at a version the UI isn't asking for yet. (`sbox` local dev reads the `dev`-tier buckets.)
+**Two version notions, and they can differ.** The ingest keeps a "latest ingested" version in SSM (`/mdm_schema/version/device-management`). That's the version new content is uploaded *under*. `GET /v1/version` returns the "last **supported** version", which is what the MFEs request and can *lag* the ingested one. So freshly-ingested schema/translations can exist at a version the UI isn't asking for yet. (`sbox` local dev reads the `dev`-tier buckets.)
 
 ---
 
@@ -165,8 +165,8 @@ Fetches the **raw Apple DDM declaration** from `GET /v1/declarative/{schemaVersi
 Field labels/descriptions come from a separate translations layer, served at `GET /v1/translations/{version}/{type}/{locale}` and authored in the **`jamf/mdm-schema-translations`** repo (Goldminers). The ingest **translations Lambda** auto-generates only the `en-US` base (`title`/`description`) from the schema; every other locale, plus the Jamf overrides, are **hand-authored/merged** into that repo and preserved across schema versions. The repo's `s3-upload` GitHub Action deploys a branch's translations to a per-env bucket (`dev`/`stage`/`prod`) on push to specific branches or via `workflow_dispatch`.
 
 Override fields (all optional, keyed per property):
-- `jamfTitle` / `jamfDescription` — override a field's title/description; win over the Apple base text.
-- `jamfEnums` — map raw `enum`/`rangelist` values to human-readable dropdown labels. Partial maps are fine; unmapped values fall back to the raw value.
+- `jamfTitle` / `jamfDescription`: override a field's title/description; win over the Apple base text.
+- `jamfEnums`: map raw `enum`/`rangelist` values to human-readable dropdown labels. Partial maps are fine; unmapped values fall back to the raw value.
 
 **Consumption / `$ref` handling:** JSFG resolves `$ref`s in **both** the schema (`unrefSchema`) and the localizations (`unrefLocalizations`), so fields behind a `$defs`/`$ref` (e.g. array-item types) get localized too. `jamfEnums` reach the Select widget via `setLocalizations(...)`.
 
@@ -189,11 +189,11 @@ Override fields (all optional, keyed per property):
 Because they share a name, a grep across sibling repos will hit both. Reasoning about the wrong one produces confident but wrong conclusions about validation and widget behavior.
 
 The in-hub MFE uses nanostores for reactive form state. Communication with the parent happens exclusively through `jamf:json_schema_form_generator_service`:
-- `setJsonSchema(schema)` — pushes a new schema into the form
-- `setPayloadFormValue(value)` / `setInitialPayloadFormValue(value)` — pre-populate or reset form values
-- `getPayloadOutputFormValue()` — retrieve the current form output on save
-- `getCanBeSaved()` / `setSaveClicked(true)` — trigger validation before submission
-- `setUiSchema(uiSchema)` / `setLocalizations(localizations)` — forward UI hints (widget/hide/order) and localization data (`jamfTitle`/`jamfDescription`/`jamfEnums`) for the form to apply
+- `setJsonSchema(schema)`: pushes a new schema into the form
+- `setPayloadFormValue(value)` / `setInitialPayloadFormValue(value)`: pre-populate or reset form values
+- `getPayloadOutputFormValue()`: retrieve the current form output on save
+- `getCanBeSaved()` / `setSaveClicked(true)`: trigger validation before submission
+- `setUiSchema(uiSchema)` / `setLocalizations(localizations)`: forward UI hints (widget/hide/order) and localization data (`jamfTitle`/`jamfDescription`/`jamfEnums`) for the form to apply
 
 ---
 
@@ -206,14 +206,14 @@ Spring Boot services back the Blueprints feature. All use M2M OAuth2 authenticat
 Manages blueprint lifecycle: create, edit, version, deploy, undeploy. Key points:
 
 - **Persistence**: PostgreSQL with Flyway migrations; soft-deletes; versioned via `BlueprintVersion` entities
-- **Deployments**: Async via Pulsar — deploy/undeploy return 202, actual work triggered by `pdd/blueprints/blueprint-deployment-task` (consumed by `blueprint-deployment-service`, which is owned by the Ocean team, not DDmR)
+- **Deployments**: Async via Pulsar. Deploy/undeploy return 202, actual work triggered by `pdd/blueprints/blueprint-deployment-task` (consumed by `blueprint-deployment-service`, which is owned by the Ocean team, not DDmR)
 - **Multi-tenancy**: Every query filters by `tenantId` from M2M JWT; `@TenantId` annotation on controllers
 - **JSON Merge Patch** (RFC 7386) for partial blueprint updates, with separate SAVE vs DEPLOY validation profiles
 - **External dependencies**: calls component registry service to resolve components; calls tenant service for org info
 
 ### blueprint-components-registry-service
 
-Manages the catalog of available Blueprint components — the list of component types that can be added to a Blueprint (e.g., Configuration Profiles, Declarations, App Managed). Exposes a REST API at `/blueprints/components-registry`.
+Manages the catalog of available Blueprint components: the list of component types that can be added to a Blueprint (e.g., Configuration Profiles, Declarations, App Managed). Exposes a REST API at `/blueprints/components-registry`.
 
 It also decides **which components a product is offered at all**, via a per-product supported-OS capability list in its Spring config (`jamf.product.capabilities.supported-operating-systems`, keyed `pro` / `school`). This is a *product-wide* list and is distinct from an individual declaration's own `supportedOS`, so the two can disagree. When a UI offers a component on a platform Apple doesn't support, check both this config and the owning component service's per-item metadata.
 

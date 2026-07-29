@@ -1,6 +1,6 @@
 # CI/CD Pipeline
 
-Last reviewed: 2026-05-19; amended 2026-07-29 to add the "a GitOps declaration is not evidence something runs" trap. **Not re-verified:** the workflow job graph, action version pins, generator-block inventory, and `ddmr-deployments` contents — read the workflow files and `components/<service>.yaml` for current truth.
+Last reviewed: 2026-05-19; amended 2026-07-29 to add the "a GitOps declaration is not evidence something runs" trap. **Not re-verified:** the workflow job graph, action version pins, generator-block inventory, and `ddmr-deployments` contents. Read the workflow files and `components/<service>.yaml` for current truth.
 
 ## Release Flow Overview
 
@@ -19,19 +19,19 @@ The short SHA (7 characters of `GITHUB_SHA`) is the canonical version token. It 
 
 All workflows live in `.github/workflows/`. The main ones for a service like `scoping-engine`:
 
-- **`ci.yml`** — triggers on push to `main` and `workflow_dispatch`. `reusable-java-build-test.yml` and `reusable-build-image.yml` run in parallel. `reusable-helm-validate-package.yml` waits on `reusable-build-image.yml`. The release step waits on all three. Also calls `reusable-api-export.yml` after release and `reusable-notify-failure.yml` on failure.
-- **`reusable-java-build-test.yml`** — sets up Java 21 (Liberica), starts a local DynamoDB container on port 8000, runs `./gradlew test`, publishes a JUnit test report, and runs SonarQube analysis via `jacocoTestReport sonar`.
-- **`reusable-build-image.yml`** — runs `./gradlew :jib` to build and push the container image to ECR, generates a short SHA, extracts the version tag from `build/resources/main/META-INF/build-info.properties`, and signs the image with cosign using KMS key `awskms:///arn:aws:kms:us-east-1:359585083818:alias/cosign`.
-- **`reusable-helm-validate-package.yml`** — validates the Helm chart against ArgoCD using `jamf/github-actions-helm/validate-argocd@v3` (passes `ARGOCD_COMPONENTS_VIEWER` and `GHA_PSV_READ_PRIVATE_KEY`), then packages and pushes the chart OCI artifact to ECR via `jamf/github-actions-helm/package@v2`.
-- **`check-shared-values.yml`** — runs on every PR using `jamf/github-actions-highway-to-prod/check-shared-values@v2`. Checks that the `shared-values-version` file in the repo matches the latest SHA from `platform-shared-values`. A failure blocks merging if branch protection rules require the check to pass.
-- **`manual-deployment.yml`** — `workflow_dispatch` only. Deploys a specific image tag directly to the sandbox cluster (`use1-ddmr-sbox231207`, account `183197288009`) or perf namespace via `helm upgrade --install`, bypassing ArgoCD. Used for ad-hoc testing.
-- **`branch-build.yml`** — builds images for feature branches without triggering a release or updating the components repo.
+- **`ci.yml`**: triggers on push to `main` and `workflow_dispatch`. `reusable-java-build-test.yml` and `reusable-build-image.yml` run in parallel. `reusable-helm-validate-package.yml` waits on `reusable-build-image.yml`. The release step waits on all three. Also calls `reusable-api-export.yml` after release and `reusable-notify-failure.yml` on failure.
+- **`reusable-java-build-test.yml`**: sets up Java 21 (Liberica), starts a local DynamoDB container on port 8000, runs `./gradlew test`, publishes a JUnit test report, and runs SonarQube analysis via `jacocoTestReport sonar`.
+- **`reusable-build-image.yml`**: runs `./gradlew :jib` to build and push the container image to ECR, generates a short SHA, extracts the version tag from `build/resources/main/META-INF/build-info.properties`, and signs the image with cosign using KMS key `awskms:///arn:aws:kms:us-east-1:359585083818:alias/cosign`.
+- **`reusable-helm-validate-package.yml`**: validates the Helm chart against ArgoCD using `jamf/github-actions-helm/validate-argocd@v3` (passes `ARGOCD_COMPONENTS_VIEWER` and `GHA_PSV_READ_PRIVATE_KEY`), then packages and pushes the chart OCI artifact to ECR via `jamf/github-actions-helm/package@v2`.
+- **`check-shared-values.yml`**: runs on every PR using `jamf/github-actions-highway-to-prod/check-shared-values@v2`. Checks that the `shared-values-version` file in the repo matches the latest SHA from `platform-shared-values`. A failure blocks merging if branch protection rules require the check to pass.
+- **`manual-deployment.yml`**: `workflow_dispatch` only. Deploys a specific image tag directly to the sandbox cluster (`use1-ddmr-sbox231207`, account `183197288009`) or perf namespace via `helm upgrade --install`, bypassing ArgoCD. Used for ad-hoc testing.
+- **`branch-build.yml`**: builds images for feature branches without triggering a release or updating the components repo.
 
 ### `shared-values-version` file
 
 Each service repo contains `values/shared-values-version`, a plain text file holding a 7-character SHA pinning the version of `platform-shared-values` the service expects. The `check-shared-values.yml` workflow verifies this on PRs.
 
-To bump the pin, edit this file in the service repo and merge — Highway-to-Prod automation then propagates the new SHA into every `sharedValuesVersion` field in `components/<service>.yaml` via a bot commit on `jamf/components` main. Do **not** manually edit `components/<service>.yaml` to change `sharedValuesVersion`; the next service-side bump will overwrite it.
+To bump the pin, edit this file in the service repo and merge. Highway-to-Prod automation then propagates the new SHA into every `sharedValuesVersion` field in `components/<service>.yaml` via a bot commit on `jamf/components` main. Do **not** manually edit `components/<service>.yaml` to change `sharedValuesVersion`; the next service-side bump will overwrite it.
 
 ## components repo: ApplicationSet per Service
 
@@ -41,13 +41,13 @@ The `components` repo holds one `ApplicationSet` YAML per service under `compone
 
 Each generator block targets one cluster using a `clusters.selector.matchLabels` filter on `jamf.com/cluster-name`. The `values` stanza sets:
 
-- `env` — logical environment name (dev, stage, integration, prod)
-- `batch` — deployment batch (dev, stage, prod); controls metacluster rollout ordering
-- `namespace` — Kubernetes namespace (e.g. `ddmr-stage`, `ddmr-prod`)
-- `region` — AWS region string
-- `version` — 7-char git SHA of the service image to deploy
-- `sharedValuesVersion` — 7-char git SHA of `platform-shared-values` to use
-- `enabled` — whether ArgoCD should actively sync this Application
+- `env`: logical environment name (dev, stage, integration, prod)
+- `batch`: deployment batch (dev, stage, prod); controls metacluster rollout ordering
+- `namespace`: Kubernetes namespace (e.g. `ddmr-stage`, `ddmr-prod`)
+- `region`: AWS region string
+- `version`: 7-char git SHA of the service image to deploy
+- `sharedValuesVersion`: 7-char git SHA of `platform-shared-values` to use
+- `enabled`: whether ArgoCD should actively sync this Application
 
 For `scoping-engine` the generator blocks cover:
 
@@ -72,9 +72,9 @@ Each Application uses three sources:
 3. **platform-shared-values** (`ref: sharedvalues`): `https://github.com/jamf/platform-shared-values.git` at `targetRevision: <sharedValuesVersion>`. Provides cluster-level and service-specific shared values.
 
 Value file layering order (last wins):
-1. `$component/values/values-<env>-<region>.yaml` — service-level env/region overrides
-2. `$sharedvalues/values/<cloud>/<metapartition>/<env>/<metaregion>/<region>/values.yaml` — cluster-level shared values
-3. `$sharedvalues/values/<cloud>/<metapartition>/<env>/<metaregion>/<region>/<service>/values.yaml` — service-specific shared values for that cluster (optional, `ignoreMissingValueFiles: true`)
+1. `$component/values/values-<env>-<region>.yaml`: service-level env/region overrides
+2. `$sharedvalues/values/<cloud>/<metapartition>/<env>/<metaregion>/<region>/values.yaml`: cluster-level shared values
+3. `$sharedvalues/values/<cloud>/<metapartition>/<env>/<metaregion>/<region>/<service>/values.yaml`: service-specific shared values for that cluster (optional, `ignoreMissingValueFiles: true`)
 
 ## components-resources repo: Per-Service Metadata
 
@@ -123,15 +123,15 @@ The HC cluster's shared values set `aws.cluster: use2-platformsvchc-stage260108`
 
 Service-specific HC overrides live at `values/aws/hc/stage/us/us-east-2/<service>/values.yaml`. For scoping-engine this file configures the DynamoDB table name, Pulsar broker URL (`platform-event-bus.stage.platform-hc.jamflabs.io`), M2M token URLs pointing to `us1.stage.platform-hc.jamflabs.io`, and the IAM role ARN `arn:aws:iam::604006981984:role/ddmr-scoping-engine-role`. It also sets `auth.env: hc-stage` for OIDC verification.
 
-The HC generator block in the ApplicationSet is structurally identical to other generators — same `version` and `sharedValuesVersion` SHAs — but targets the HC cluster name, so ArgoCD treats it as a distinct Application.
+The HC generator block in the ApplicationSet is structurally identical to other generators (same `version` and `sharedValuesVersion` SHAs) but targets the HC cluster name, so ArgoCD treats it as a distinct Application.
 
 ## Batch Strategy
 
 The `batch` label on each ApplicationSet Application drives the metacluster automation rollout order. Batches in use for DDMR services:
 
-- **`dev`** — development cluster only (`use2-platformsvc-dev240524`). Receives updates immediately.
-- **`stage`** — stage cluster (`use1-jprosvc-stage240110`), integration namespace on the same cluster, and the HC stage cluster (`use2-platformsvchc-stage260108`). Updated after dev.
-- **`prod`** — all production clusters (us-east-1, eu-central-1, ap-northeast-1). Updated after stage gates pass.
+- **`dev`**: development cluster only (`use2-platformsvc-dev240524`). Receives updates immediately.
+- **`stage`**: stage cluster (`use1-jprosvc-stage240110`), integration namespace on the same cluster, and the HC stage cluster (`use2-platformsvchc-stage260108`). Updated after dev.
+- **`prod`**: all production clusters (us-east-1, eu-central-1, ap-northeast-1). Updated after stage gates pass.
 
 The `metacluster-automation: 'true'` label opts the Application into automated progressive delivery. `metacluster.sync-priority: '100'` controls relative ordering within a batch.
 
@@ -139,10 +139,10 @@ The `metacluster-automation: 'true'` label opts the Application into automated p
 
 `ddmr-jenkins` is a Jenkins shared library (Groovy). It lives at `/vars/*.groovy` and `/lib/`. The `vars/` scripts are the callable pipeline steps:
 
-- `updateStaging.groovy` — expects the `ddmr-deployments` repo to already be checked out; does a `git pull` to get the latest, then uses `yq` to write new `container.repo` and `container.tag` into `values-stage.yaml` and `values-stable-dev.yaml`, then commits and pushes. Used by older Jenkins pipelines that write directly to `ddmr-deployments` instead of `components`.
-- `updateProduction.groovy` — same pattern but updates `values-integration.yaml` and `values-prod.yaml`. Requires an `approver` parameter.
-- `syncArgoCD.groovy` — downloads the `argocd` CLI from `argo.jamf.build`, then calls `argocd app sync <name>` followed by `argocd app wait <name>` to block the pipeline until the sync is healthy.
-- `checkoutDeployments.groovy`, `runComponentTests.groovy`, `runSystemTests.groovy`, `captureComponentTestResults.groovy`, `captureSystemTestResults.groovy`, `createLocalDynamoTable.groovy`, `readDynamoJson.groovy`, `updatePerformance.groovy`, `updateSandbox.groovy` — additional pipeline utilities for test execution and non-ArgoCD deployments.
+- `updateStaging.groovy`: expects the `ddmr-deployments` repo to already be checked out; does a `git pull` to get the latest, then uses `yq` to write new `container.repo` and `container.tag` into `values-stage.yaml` and `values-stable-dev.yaml`, then commits and pushes. Used by older Jenkins pipelines that write directly to `ddmr-deployments` instead of `components`.
+- `updateProduction.groovy`: same pattern but updates `values-integration.yaml` and `values-prod.yaml`. Requires an `approver` parameter.
+- `syncArgoCD.groovy`: downloads the `argocd` CLI from `argo.jamf.build`, then calls `argocd app sync <name>` followed by `argocd app wait <name>` to block the pipeline until the sync is healthy.
+- `checkoutDeployments.groovy`, `runComponentTests.groovy`, `runSystemTests.groovy`, `captureComponentTestResults.groovy`, `captureSystemTestResults.groovy`, `createLocalDynamoTable.groovy`, `readDynamoJson.groovy`, `updatePerformance.groovy`, `updateSandbox.groovy`: additional pipeline utilities for test execution and non-ArgoCD deployments.
 
 The `lib/` directory contains bundled Groovy JAR dependencies.
 
@@ -150,10 +150,10 @@ The `lib/` directory contains bundled Groovy JAR dependencies.
 
 `ddmr-deployments` is an older Helm-values repository that predates the `components` / ApplicationSet pattern. It carries a small number of tooling applications (scope-membership-tool, mdm-tool, tenant-migration) that use the older deployment pattern.
 
-**Trap: a declaration in this repo does not mean the thing is running.** `ddmr-deployments` declares the tenant-migration CronJob as enabled, but that job cannot function since the `tenant_index` GSI it queries was removed (DDMR-1035) — see `database.md`. Confirm against the cluster (`kubectl get cronjob -A`) rather than reading intent from this repo.
+**Trap: a declaration in this repo does not mean the thing is running.** `ddmr-deployments` declares the tenant-migration CronJob as enabled, but that job cannot function since the `tenant_index` GSI it queries was removed (DDMR-1035); see `database.md`. Confirm against the cluster (`kubectl get cronjob -A`) rather than reading intent from this repo.
 
 Structure:
-- `argo/apps/` — ArgoCD ApplicationSet YAMLs for the remaining tools. These use a `list` generator (explicit cluster/namespace entries) rather than the `clusters` selector pattern, and point directly at `helm/` subdirectories in this repo as their source. Example: `scope-membership-tool-appset.yaml`, `mdm-tool-appset.yaml`, `tenant-migration-job-appset.yaml`, `tenant-authorizer-appset.yaml`.
-- `helm/` — Helm chart values organized by tool, with per-env value files (`values-all.yaml`, `values-prod.yaml`, `values-stable-dev.yaml`, etc.).
+- `argo/apps/`: ArgoCD ApplicationSet YAMLs for the remaining tools. These use a `list` generator (explicit cluster/namespace entries) rather than the `clusters` selector pattern, and point directly at `helm/` subdirectories in this repo as their source. Example: `scope-membership-tool-appset.yaml`, `mdm-tool-appset.yaml`, `tenant-migration-job-appset.yaml`, `tenant-authorizer-appset.yaml`.
+- `helm/`: Helm chart values organized by tool, with per-env value files (`values-all.yaml`, `values-prod.yaml`, `values-stable-dev.yaml`, etc.).
 
 For tools in `ddmr-deployments`, updates flow through `updateStaging.groovy` / `updateProduction.groovy` in `ddmr-jenkins` (writing new image tags directly into these value files) rather than through the GitHub Actions CI release step.

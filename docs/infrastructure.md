@@ -76,7 +76,7 @@ Staging also provisions a parallel `ddmr-integration-*` table set alongside the 
 
 S3 resources are minimal. The sandbox environment has a single bucket:
 
-- `ddmr-performance-test-results` — stores results from performance/load tests, AES256 encrypted
+- `ddmr-performance-test-results`: stores results from performance/load tests, AES256 encrypted
 
 State backend buckets (one per environment/region) are managed outside these repos.
 

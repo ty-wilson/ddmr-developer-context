@@ -1,13 +1,13 @@
 # Auth And Tenancy
 
-Last reviewed: 2026-06-24; amended 2026-07-29 to make this doc the owner of the sidecar-vs-in-pod question and to convert cache/window constants into their consequences. **Not re-verified:** which specific services still run the sidecar, the environment-profile details, and the division-context section — check those against the cluster and code before relying on them.
+Last reviewed: 2026-06-24; amended 2026-07-29 to make this doc the owner of the sidecar-vs-in-pod question and to convert cache/window constants into their consequences. **Not re-verified:** which specific services still run the sidecar, the environment-profile details, and the division-context section. Check those against the cluster and code before relying on them.
 
 ## Overview
 
 DDmR services use two ingress mechanisms, and traffic does not always pass through the sidecar:
 
 - **Tyk API Gateway (M2M path):** All M2M service-to-service calls route through Tyk, which forwards to the `ddmr-jwt-sidecar` on port 7070. The sidecar validates the M2M JWT and injects HTTP headers (primarily `X-TenantId`) before proxying to the application on port 8080.
-- **HAProxy Ingress (CSA/legacy path):** Some services (notably DSS) define a separate HAProxy-based Kubernetes ingress that routes directly to the application on port 8080, **bypassing the sidecar**. Authentication is handled by the `ddmr-authorizer-tenant` via HAProxy's `auth-url` annotation — the authorizer validates the CSA JWT and returns `X-TenantId`, which HAProxy injects into the forwarded request.
+- **HAProxy Ingress (CSA/legacy path):** Some services (notably DSS) define a separate HAProxy-based Kubernetes ingress that routes directly to the application on port 8080, **bypassing the sidecar**. Authentication is handled by the `ddmr-authorizer-tenant` via HAProxy's `auth-url` annotation. The authorizer validates the CSA JWT and returns `X-TenantId`, which HAProxy injects into the forwarded request.
 
 Services read `X-TenantId` regardless of which path delivered it. The `spring-m2m-authentication` library provides in-process M2M JWT validation as an alternative to the sidecar; declaration-service and DSS each ship their own in-pod `JwtFilter` (see "In-Pod JwtFilter" below). The migration off the sidecar began with declaration-service under DDMR-1088, and other services have followed since.
 
@@ -33,7 +33,7 @@ The filter (`JwtProxyFilter`) processes every incoming request:
 1. Actuator requests (`/actuator-jwt/...`) are passed directly to Micronaut's own handlers.
 2. Requests matching the configured `open` endpoint list are proxied without authentication, but any proxy headers that would normally be set are stripped from the request first to prevent spoofing.
 3. All other requests must carry a `Bearer` token in the `Authorization` header. The token is parsed, its issuer is looked up in `JwtProxySignatures`, and the signature is verified via JWKS. If the issuer is not in the configured map the request is rejected with 401.
-4. The `scope` claim on the token is checked against a configured value. When scope is configured as `"*"` the check is bypassed entirely and the request is allowed regardless of the token's scope claim — no regex is applied. For CSA tokens scoping-engine requires `scope: "all-basic-cloud-services"`.
+4. The `scope` claim on the token is checked against a configured value. When scope is configured as `"*"` the check is bypassed entirely and the request is allowed regardless of the token's scope claim, and no regex is applied. For CSA tokens scoping-engine requires `scope: "all-basic-cloud-services"`.
 5. JWT claims are extracted into HTTP headers per the `proxy.headers` configuration. The transformation supports three modes: `REQUIRED` (401 if claim absent), `OPTIONAL` (strip the header if claim absent), and `BOOLEAN` (sets `true`/`false` based on claim presence).
 6. The mutated request (with injected headers and rewritten URI) is forwarded to `localhost:8080`.
 
@@ -45,14 +45,14 @@ The sidecar is conditionally included in the Helm deployment template. In `scopi
 
 `JwtProxySignatures` maps JWKS URLs to token type (CSA or M2M). The sidecar supports multiple JWKS endpoints simultaneously:
 
-- `m2m.jwksInternal` — internal M2M (required)
-- `m2m.jwksExternal` — external M2M (optional)
-- `m2m.jwksInternalAlt` / `m2m.jwksExternalAlt` — alternate endpoints used during infrastructure migrations
+- `m2m.jwksInternal`: internal M2M (required)
+- `m2m.jwksExternal`: external M2M (optional)
+- `m2m.jwksInternalAlt` / `m2m.jwksExternalAlt`: alternate endpoints used during infrastructure migrations
 
 Different `.toml` environment profiles bake the correct JWKS URLs into the image:
-- `application-stage.toml` — `us1.api.stage.platform.jamflabs.io`
-- `application-prod-use1.toml` — `us.int.apigw.jamf.com`
-- `application-fi.toml` — Tyk gateway at `tyk-gateway.stage.apigw.jamfnebula.com` for `jwksInternal`, with `internalIssuer` override pointing to `us.int.stage.apigw.jamfnebula.com` for the `iss` claim
+- `application-stage.toml`: `us1.api.stage.platform.jamflabs.io`
+- `application-prod-use1.toml`: `us.int.apigw.jamf.com`
+- `application-fi.toml`: Tyk gateway at `tyk-gateway.stage.apigw.jamfnebula.com` for `jwksInternal`, with `internalIssuer` override pointing to `us.int.stage.apigw.jamfnebula.com` for the `iss` claim
 
 ### Sidecar Configuration via Helm
 
@@ -103,13 +103,13 @@ The `ddmr-authorizer-tenant` is a Spring Boot WebFlux service acting as a Lambda
 
 - Validates the CSA JWT via Spring Security's `oauth2ResourceServer().jwt()` with the CSA JWKS URI from S3.
 - Requires `token_use == "access"` on the JWT.
-- When the `rejectRequestInStageHack` feature flag is enabled: **deliberately** rejects the first request per `(organizationId, customerId)` pair for a fixed window, to simulate a missing `tenant_id` claim. It also checks that the JWT scope matches `all-basic-cloud-services:allow`. **Trap:** a 401 in stage may be this hack rather than a real failure — check whether the flag is on before debugging further.
+- When the `rejectRequestInStageHack` feature flag is enabled: **deliberately** rejects the first request per `(organizationId, customerId)` pair for a fixed window, to simulate a missing `tenant_id` claim. It also checks that the JWT scope matches `all-basic-cloud-services:allow`. **Trap:** a 401 in stage may be this hack rather than a real failure. Check whether the flag is on before debugging further.
 - Looks up the mapping `ORG#<organizationId>#<instanceId>` in a DynamoDB table (`tenant-authorizer`) keyed by `pk`.
 - If no entry exists and `generateTenantId` is enabled, generates a UUID and writes it with a condition expression to prevent race conditions.
 - If the JWT carries a `tenant_id` claim and it disagrees with the stored record, logs a warning and flags the record for migration (`claimTenantMigration` attribute).
 - Returns `X-TenantId` (the tenant UUID) and `X-Auth-Src` (a `CSA:<organizationId>:<customerId>` string) as response headers to the API gateway.
 
-**Generated vs real tenant (root of "Tenant mismatch" 401s).** The `tenantId` the authorizer stores is only ever a UUID it *generated* (when `generateTenantId` was enabled and no claim was present); a `tenant_id` claim is never persisted into `tenantId`. The real platform tenant lands in a separate `platformTenant` attribute, written by the `ddmr-tenant-migration-job` after a successful migration, and is preferred by the lookup when present. Crucially, **only the CSA path consults this table.** The M2M path (Tyk → DSS in-pod `JwtFilter`) reads the tenant straight from the `https://www.jamf.com/tenant.tenantId` claim and never touches the authorizer — so if an instance's real tenant only ever arrives over M2M, the authorizer never sees the divergence, never flags it (`claimTenantMigration`), and the migrator never reconciles it. That orphaned-generated-tenant state is what produces DSS "Tenant mismatch" 401s once the instance's DSS traffic starts presenting the real tenant. See `services/ddmr-authorizer-tenant.md` and `services/declaration-storage-service.md`.
+**Generated vs real tenant (root of "Tenant mismatch" 401s).** The `tenantId` the authorizer stores is only ever a UUID it *generated* (when `generateTenantId` was enabled and no claim was present); a `tenant_id` claim is never persisted into `tenantId`. The real platform tenant lands in a separate `platformTenant` attribute, written by the `ddmr-tenant-migration-job` after a successful migration, and is preferred by the lookup when present. Crucially, **only the CSA path consults this table.** The M2M path (Tyk → DSS in-pod `JwtFilter`) reads the tenant straight from the `https://www.jamf.com/tenant.tenantId` claim and never touches the authorizer. So if an instance's real tenant only ever arrives over M2M, the authorizer never sees the divergence, never flags it (`claimTenantMigration`), and the migrator never reconciles it. That orphaned-generated-tenant state is what produces DSS "Tenant mismatch" 401s once the instance's DSS traffic starts presenting the real tenant. See `services/ddmr-authorizer-tenant.md` and `services/declaration-storage-service.md`.
 
 ---
 
@@ -119,7 +119,7 @@ The `ddmr-authorizer-tenant` is a Spring Boot WebFlux service acting as a Lambda
 
 - `X-TenantId` (constant `TENANT_HEADER`): required. If absent or blank, throws `ResponseStatusException(401, "No tenant identifier")`.
 - `X-EnvironmentId` (constant `ENVIRONMENT_HEADER`): optional. Returns `null` if absent or blank.
-- `X-DivisionId` (constant `DIVISION_HEADER`): optional. Returns `null` if absent or blank — see "Division Context" below.
+- `X-DivisionId` (constant `DIVISION_HEADER`): optional. Returns `null` if absent or blank; see "Division Context" below.
 
 These values are available as `tenant`, `tenantEnv`, and `callerDivision` properties on any request object. None of these are documented in the OpenAPI spec as direct client concerns because they are injected by the sidecar/authorizer/`JwtFilter`, not set by API callers.
 
@@ -147,7 +147,7 @@ The tenant must be a valid UUID for Robocop. If the tenant string is not a valid
 
 ## Division Context (AD-16)
 
-Division is a platform-wide logical subsection of an environment — similar to Sites in Jamf Pro or Locations in Jamf School. Division-aware filtering is each service's responsibility (see [AD-16](https://jamfsoftware.atlassian.net/wiki/spaces/ARCH/pages/5577703604)). The platform's contract is: services receive a `divisionId` UUID on the M2M JWT claim; everything else (storage, filtering, reference-consistency) is up to the service.
+Division is a platform-wide logical subsection of an environment, similar to Sites in Jamf Pro or Locations in Jamf School. Division-aware filtering is each service's responsibility (see [AD-16](https://jamfsoftware.atlassian.net/wiki/spaces/ARCH/pages/5577703604)). The platform's contract is: services receive a `divisionId` UUID on the M2M JWT claim; everything else (storage, filtering, reference-consistency) is up to the service.
 
 ### Claim shape
 
@@ -171,7 +171,7 @@ The Tyk gateway's `auth0-to-m2m` plugin (in `tyk-custom-plugins`) extracts the e
 
 Two consequences:
 
-- **`client_credentials` flow never adds divisionId.** Only token exchange (initiated by Tyk from an external request) triggers the divisionId-injection code path. A direct `curl` to the M2M issuer with `grant_type=client_credentials` will always return claims without `divisionId`, regardless of how the work has progressed — this is by design, not a bug.
+- **`client_credentials` flow never adds divisionId.** Only token exchange (initiated by Tyk from an external request) triggers the divisionId-injection code path. A direct `curl` to the M2M issuer with `grant_type=client_credentials` will always return claims without `divisionId`, regardless of how the work has progressed. This is by design, not a bug.
 - **The `divisionId` header is reject-listed for non-Tyk callers.** `m2m-terraform` configures the `reject-headers` executor on the M2M service so only the Tyk plugin can set the header. Direct callers cannot spoof a division.
 
 ### Validation rules enforced by the M2M service
@@ -183,7 +183,7 @@ Two consequences:
 
 ### Service-side reading
 
-`JwtFilter` reads `info["divisionId"]?.toString()` from the verified `https://www.jamf.com/tenant` claim and writes it to `exchange.attributes[DIVISION_HEADER]` (the `X-DivisionId` key). `AbstractApiRequest.callerDivision: String?` exposes the value to handlers — `null` means the caller is a global admin. Services that want division-aware filtering compare object `divisionId` to `callerDivision` via the `divisionAllowed` predicate (a global caller sees everything; otherwise exact match).
+`JwtFilter` reads `info["divisionId"]?.toString()` from the verified `https://www.jamf.com/tenant` claim and writes it to `exchange.attributes[DIVISION_HEADER]` (the `X-DivisionId` key). `AbstractApiRequest.callerDivision: String?` exposes the value to handlers: `null` means the caller is a global admin. Services that want division-aware filtering compare object `divisionId` to `callerDivision` via the `divisionAllowed` predicate (a global caller sees everything; otherwise exact match).
 
 ---
 
@@ -199,7 +199,7 @@ Both filters share these properties:
 - **Tenant is passed via WebFlux exchange attributes, not request headers.** When `authEnabled` is true, the filter reads `https://www.jamf.com/tenant.tenantId` (and `.environmentId`, `.divisionId`) from the verified JWT and stores them as `exchange.attributes[TENANT_HEADER]` / `exchange.attributes[ENVIRONMENT_HEADER]` / `exchange.attributes[DIVISION_HEADER]`. `AbstractApiRequest` reads from those attributes, throwing 401 if tenant is absent. When `authEnabled` is false (test/local), the same attributes are populated from inbound `X-TenantId` / `X-EnvironmentId` / `X-DivisionId` headers instead. The division attribute is gated by `takeIf { it.isNotBlank() }` so empty-string claim values are normalized to "no division" rather than written as `""`.
 - **CSA path.** DSS's filter additionally resolves CSA tokens via `CsaAuthResolver` / `CsaTenantResolver`, which looks up the tenant in the `tenant-authorizer` DynamoDB table. declaration-service is M2M-only.
 
-Practical consequence: port 8080 on DSS no longer trusts an inbound `X-TenantId` header in prod — callers must send a Bearer JWT, just as they would via the gateway path. Port-forwarding the pod and sending only `X-TenantId` returns 401 in any environment where `authEnabled` is true.
+Practical consequence: port 8080 on DSS no longer trusts an inbound `X-TenantId` header in prod. Callers must send a Bearer JWT, just as they would via the gateway path. Port-forwarding the pod and sending only `X-TenantId` returns 401 in any environment where `authEnabled` is true.
 
 ---
 
@@ -225,7 +225,7 @@ CSA JWKS keys are served from S3 (e.g., `csa-public-key-store-production.s3.amaz
 
 ## HC Environment Auth Differences
 
-The `hc` (healthcare/stateramp) environment is an isolated AWS deployment with its own M2M infrastructure. The differences are entirely in configuration—the sidecar and application code are the same.
+The `hc` (healthcare/stateramp) environment is an isolated AWS deployment with its own M2M infrastructure. The differences are entirely in configuration: the sidecar and application code are the same.
 
 In `platform-shared-values/values/aws/hc/stage/us/us-east-2/scoping-engine/values.yaml`:
 

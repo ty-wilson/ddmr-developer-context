@@ -10,9 +10,9 @@ DDmR services follow a layered testing strategy: unit tests and integration test
 
 Each service has one or more companion test repos following a naming convention:
 
-- `<service>-component-tests` — black-box tests against a containerized service instance
-- `<service>-system-tests` — smoke tests run against deployed environments (integration, staging, production)
-- `<service>-performance-tests` — Artillery load tests run against a dedicated performance environment
+- `<service>-component-tests`: black-box tests against a containerized service instance
+- `<service>-system-tests`: smoke tests run against deployed environments (integration, staging, production)
+- `<service>-performance-tests`: Artillery load tests run against a dedicated performance environment
 
 Known companion repos:
 
@@ -20,10 +20,10 @@ Known companion repos:
 |---|---|---|---|
 | scoping-engine | scoping-engine-component-tests | scoping-engine-system-tests | scoping-engine-performance-tests |
 | declaration-storage-service | declaration-storage-service-component-tests | declaration-storage-service-system-tests | declaration-storage-service-performance-tests |
-| declaration-service | declaration-service-component-tests | — | — |
-| ddmr-authorizer-tenant | ddmr-authorizer-tenant-component-tests | — | — |
+| declaration-service | declaration-service-component-tests | (none) | (none) |
+| ddmr-authorizer-tenant | ddmr-authorizer-tenant-component-tests | (none) | (none) |
 
-The `—` cells are real: those services have no repo of that kind, so there is nothing to look for. Not every service has companion repos at all; when they are absent, component-test configuration lives inside the service repo itself (`src/test` plus an `application-component-test.yml`). Check rather than assume:
+The `(none)` cells are real: those services have no repo of that kind, so there is nothing to look for. Not every service has companion repos at all; when they are absent, component-test configuration lives inside the service repo itself (`src/test` plus an `application-component-test.yml`). Check rather than assume:
 
 ```bash
 gh repo list jamf --limit 1000 | grep -E '\-(component|system|performance)-tests'
@@ -35,7 +35,7 @@ Component tests start the service under test inside a Testcontainer and exercise
 
 ### Stack
 
-- Kotlin + Spring Boot + Gradle. The Kotlin plugin version and JVM toolchain are declared in each repo's `build.gradle.kts` (`plugins { kotlin("jvm") ... }` and the `jvmToolchain { languageVersion... }` block) — read them there; service and companion repo can diverge.
+- Kotlin + Spring Boot + Gradle. The Kotlin plugin version and JVM toolchain are declared in each repo's `build.gradle.kts` (`plugins { kotlin("jvm") ... }` and the `jvmToolchain { languageVersion... }` block). Read them there; service and companion repo can diverge.
 - JUnit 5 (`@ExtendWith`, `@Tag`, `@SpringBootTest`)
 - Testcontainers (`PulsarContainer`, `GenericContainer` for DynamoDB local and the service image, `@Testcontainers`)
 - `WebTestClient` for HTTP assertions
@@ -46,7 +46,7 @@ Component tests start the service under test inside a Testcontainer and exercise
 Each service's component-test repo defines a custom JUnit `TestInstancePostProcessor` extension (e.g. `ScopingEngineExtension`, `DeclarationServiceExtension`). The extension:
 
 1. Loads test config via Spring's `ConfigDataEnvironmentPostProcessor` against `application-component-test.yml`.
-2. Resolves credentials — from config properties directly, or from AWS Secrets Manager using a named AWS profile.
+2. Resolves credentials: from config properties directly, or from AWS Secrets Manager using a named AWS profile.
 3. Optionally starts Pulsar, DynamoDB local, and the service itself as Testcontainers (controlled by `scoping-engine.host=container`). When not using containers, the extension connects to an already-running instance (dev, stage).
 4. Creates Pulsar producers/consumers that tests can use to inject or observe events.
 5. Injects values into test-class fields via custom annotations (`@ScopingEngineClient`, `@TestPulsarClient`, `@DssCreds`, `@BrokerCreds`, ...). The set grows; regenerate it rather than reading a list:
@@ -57,7 +57,7 @@ grep -rn 'annotation class' scoping-engine-component-tests/src
 
 ### Test Class Structure
 
-A component test class carries three load-bearing annotations: `@ExtendWith(<Service>Extension::class)` (wires the containers and injection), `@SpringBootTest`, and — when the test is also valid against a deployed environment — `@Tag("system-test")`. Fields are injected by the custom annotations above rather than by Spring.
+A component test class carries three load-bearing annotations: `@ExtendWith(<Service>Extension::class)` (wires the containers and injection), `@SpringBootTest`, and, when the test is also valid against a deployed environment, `@Tag("system-test")`. Fields are injected by the custom annotations above rather than by Spring.
 
 ```kotlin
 @ExtendWith(ScopingEngineExtension::class)
@@ -83,17 +83,17 @@ The DSS component tests use a `@SpringBootTest` base class (`DeclarationStorageT
 ./gradlew test --tests "com.jamf.platform.scoping.componenttests.ScopeEndpointTest"
 ```
 
-Confirm the task names exist in the repo you are in (`./gradlew tasks --all | grep -i test`) — they are defined per repo, not inherited.
+Confirm the task names exist in the repo you are in (`./gradlew tasks --all | grep -i test`). They are defined per repo, not inherited.
 
 ## System Tests
 
 System tests are smoke tests executed against live deployed environments (integration, staging, production). They are stored in `<service>-system-tests` repos.
 
-For `declaration-storage-service-system-tests`, tests are Postman collections under `system-tests/` — `dss-smoke-test.postman_collection.json` (post-deploy smoke check) and `dss-system-test.postman_collection.json` (broader regression suite) — run with per-target environment files under `environments/` (`Integration`, `Staging`, `Sandbox`, `Performance`, `Production.use1`, `Production.eu`, `Production.apac`). GitHub Actions workflows trigger them automatically after deployments.
+For `declaration-storage-service-system-tests`, tests are Postman collections under `system-tests/`: `dss-smoke-test.postman_collection.json` (post-deploy smoke check) and `dss-system-test.postman_collection.json` (broader regression suite). They run with per-target environment files under `environments/` (`Integration`, `Staging`, `Sandbox`, `Performance`, `Production.use1`, `Production.eu`, `Production.apac`). GitHub Actions workflows trigger them automatically after deployments.
 
-Both collections exercise **both auth paths** — M2M tokens fetched from robocop AND CSA tokens fetched via the two-hop Auth0 opaque-token → `stage-csa.services.jamfcloud.com/v2/token` flow. CSA-authenticated requests additionally send the `x-customer-id` header. Credentials for the CSA test account are stored in the Postman environment files (non-prod envs use the shared `ddmr.salesforce.test@gmail.com` account).
+Both collections exercise **both auth paths**: M2M tokens fetched from robocop AND CSA tokens fetched via the two-hop Auth0 opaque-token → `stage-csa.services.jamfcloud.com/v2/token` flow. CSA-authenticated requests additionally send the `x-customer-id` header. Credentials for the CSA test account are stored in the Postman environment files (non-prod envs use the shared `ddmr.salesforce.test@gmail.com` account).
 
-**Trap: scoping-engine has no separate system-test suite.** The `scoping-engine-system-tests` repo carries only a README (plus `catalog-info.yaml` / `sonar-project.properties`) — there are no tests in it. System coverage for scoping-engine rides on the component tests via `@Tag("system-test")` and the `systemTest` Gradle task, pointed at a non-containerized environment. Looking for scoping-engine smoke tests in that repo is a dead end.
+**Trap: scoping-engine has no separate system-test suite.** The `scoping-engine-system-tests` repo carries only a README (plus `catalog-info.yaml` / `sonar-project.properties`). There are no tests in it. System coverage for scoping-engine rides on the component tests via `@Tag("system-test")` and the `systemTest` Gradle task, pointed at a non-containerized environment. Looking for scoping-engine smoke tests in that repo is a dead end.
 
 ## Performance Tests
 
@@ -103,16 +103,16 @@ Performance tests use [Artillery](https://www.artillery.io/) YAML configs stored
 
 Each YAML file targets a dedicated performance environment. Every config follows the same three-phase shape under `config.phases`:
 
-1. **Warm up** — short, low fixed `arrivalRate`
-2. **Ramp up load** — `arrivalRate` with `rampTo` climbing to the steady-state figure
-3. **Maintain** — steady-state `arrivalRate` held for the bulk of the run
+1. **Warm up**: short, low fixed `arrivalRate`
+2. **Ramp up load**: `arrivalRate` with `rampTo` climbing to the steady-state figure
+3. **Maintain**: steady-state `arrivalRate` held for the bulk of the run
 
 Two `plugins` entries do the pass/fail work:
 
-- `ensure.thresholds` — asserts an `http.response_time.p99` ceiling, plus `maxErrorRate`. This is what makes a run fail rather than merely report.
-- `expect` with `reportFailuresAsErrors: true` — turns per-request expectation failures into errors so they count against `maxErrorRate`.
+- `ensure.thresholds`: asserts an `http.response_time.p99` ceiling, plus `maxErrorRate`. This is what makes a run fail rather than merely report.
+- `expect` with `reportFailuresAsErrors: true`: turns per-request expectation failures into errors so they count against `maxErrorRate`.
 
-A `before` block acquires an M2M Bearer token and sets up prerequisite state (e.g. creating a scope). Credentials are loaded from `config/credentials.yml` (gitignored) — a fresh clone will fail at the `before` block until that file exists.
+A `before` block acquires an M2M Bearer token and sets up prerequisite state (e.g. creating a scope). Credentials are loaded from `config/credentials.yml` (gitignored), so a fresh clone will fail at the `before` block until that file exists.
 
 Phase durations, `rampTo`, steady-state `arrivalRate`, and p99 thresholds differ per service and per test file. Read them from the YAML; do not carry a figure between files.
 
@@ -122,7 +122,7 @@ Tests are named `<resource>-spike-<METHOD>-<groupCount>.yml`, where the `groupCo
 
 ### Declaration Storage Service Tests
 
-DSS test files do **not** follow the scoping-engine naming pattern — they use their own conventions (assignment add/limit variants keyed by identifier reuse and tag behaviour). They also include CSV device fixture files (e.g. `100devices.csv`) for data-driven scenarios. Some large-payload tests deliberately carry a looser p99 threshold than the rest of the suite, so a "failing" threshold may just be the wrong file's expectation.
+DSS test files do **not** follow the scoping-engine naming pattern. They use their own conventions (assignment add/limit variants keyed by identifier reuse and tag behaviour). They also include CSV device fixture files (e.g. `100devices.csv`) for data-driven scenarios. Some large-payload tests deliberately carry a looser p99 threshold than the rest of the suite, so a "failing" threshold may just be the wrong file's expectation.
 
 ```bash
 ls declaration-storage-service-performance-tests/artillery-tests/ scoping-engine-performance-tests/artillery-tests/
@@ -145,7 +145,7 @@ The shared Pact Broker is at `https://pactbroker.jamf.build`. Consumer pacts are
 -DpublishPactResults=true
 ```
 
-**Trap: pending pacts are enabled (`pactbroker.enablePending=true`), so a broken NEW consumer contract passes the provider build silently.** The intent is that a new consumer can't break an existing provider pipeline, but the consequence is that a genuinely incompatible new contract produces a *green* provider build rather than a failure. Do not read a passing provider verification as proof that all published consumer contracts are satisfied — check the broker for pending/unverified interactions.
+**Trap: pending pacts are enabled (`pactbroker.enablePending=true`), so a broken NEW consumer contract passes the provider build silently.** The intent is that a new consumer can't break an existing provider pipeline, but the consequence is that a genuinely incompatible new contract produces a *green* provider build rather than a failure. Do not read a passing provider verification as proof that all published consumer contracts are satisfied. Check the broker for pending/unverified interactions.
 
 ### Consumer Tests
 
@@ -177,7 +177,7 @@ Tests that need a real DynamoDB are annotated `@DynamoTest`, which composes `@Ex
 
 **Trap: `"invalid"` is a real value left behind in the Spring context.** After any `@DynamoTest` finishes, `AwsProperties.dynamodb.table` holds the literal `"invalid"`, not the original config value and not null. A later test in the same context that touches DynamoDB without `@DynamoTest` will attempt a table literally named `invalid` and fail with a confusing `ResourceNotFoundException` rather than a missing-config error.
 
-A DynamoDB local instance must be running before these tests (port is set in the test config / `DynamoLifecycleExtension` — read it there, and note the containerized component tests start their own separate instance). Filter with tags:
+A DynamoDB local instance must be running before these tests (port is set in the test config / `DynamoLifecycleExtension`; read it there, and note the containerized component tests start their own separate instance). Filter with tags:
 
 ```bash
 ./gradlew test -PincludeTags=integration   # run only DynamoDB-backed tests
@@ -188,9 +188,9 @@ A DynamoDB local instance must be running before these tests (port is set in the
 
 Unit tests use `TestSpringContextBase` as the `@ContextConfiguration` class. It wires the full Spring WebFlux stack (routing, handlers, AWS config) but replaces infrastructure dependencies with Mockito mocks:
 
-- `PulsarService` — mocked; prevents Pulsar connection attempts
-- `PulsarWatchdog` — mocked; prevents listener startup
-- `DeclarationStorageWrapper` — mocked; prevents DSS HTTP calls
+- `PulsarService`: mocked; prevents Pulsar connection attempts
+- `PulsarWatchdog`: mocked; prevents listener startup
+- `DeclarationStorageWrapper`: mocked; prevents DSS HTTP calls
 
 `WebTestClient` is available as a bean for HTTP-level handler tests. Individual handler and service tests inject the beans they need and stub behavior with Mockito-Kotlin. Because the mock list is what keeps unit tests offline, verify it in the class before assuming a unit test cannot reach the network: `grep -n 'MockBean\|@Bean' <service>/src/test/**/TestSpringContextBase.kt`.
 
@@ -216,7 +216,7 @@ Unit tests use `TestSpringContextBase` as the `@ContextConfiguration` class. It 
 # 1. Which companion test repos exist for a service (the table above goes stale).
 gh repo list jamf --limit 1000 | grep -E '\-(component|system|performance)-tests'
 
-# 2. Real Artillery load shape and thresholds — never quote these from a doc.
+# 2. Real Artillery load shape and thresholds: never quote these from a doc.
 grep -rn -A2 'phases:\|rampTo\|arrivalRate\|p99\|maxErrorRate' \
   scoping-engine-performance-tests/artillery-tests/*.yml
 
@@ -233,7 +233,7 @@ grep -rn 'au.com.dius.pact\|enablePending\|IgnoreNoPactsToVerify' <service>/cont
 ./gradlew tasks --all | grep -i test
 ```
 
-Before concluding a suite doesn't exist, check unmerged work — a companion repo can be README-only on `main` while tests sit on a branch:
+Before concluding a suite doesn't exist, check unmerged work: a companion repo can be README-only on `main` while tests sit on a branch:
 
 ```bash
 git -C <test-repo> fetch origin --quiet

@@ -1,12 +1,12 @@
 # Database
 
-Last reviewed: 2026-07-29 (Tyler Wilson). Re-verified against `declaration-storage-service` code on that date: the DSS assignment `tag` semantics, `declaration_index` not being tenant-scoped, and declaration IDs being random UUIDs. **Not re-verified and older:** the scoping-engine key patterns, the tenant-authorizer table, and the cross-service isolation notes — treat those as pointers and confirm before relying on them.
+Last reviewed: 2026-07-29 (Tyler Wilson). Re-verified against `declaration-storage-service` code on that date: the DSS assignment `tag` semantics, `declaration_index` not being tenant-scoped, and declaration IDs being random UUIDs. **Not re-verified and older:** the scoping-engine key patterns, the tenant-authorizer table, and the cross-service isolation notes. Treat those as pointers and confirm before relying on them.
 
 ## Overview
 
 DDmR uses DynamoDB with a single-table design. Each service owns its own table; services do not read each other's tables. Cross-service data flows happen over HTTP or Pulsar events.
 
-Table definitions live in `ddmr-terraform/grunt/*-table-definition.yaml`. The primary key across all DDmR tables is `pkey` (hash) and `psort` (range), both strings — except the tenant-authorizer table which uses `pk` with no range key.
+Table definitions live in `ddmr-terraform/grunt/*-table-definition.yaml`. The primary key across all DDmR tables is `pkey` (hash) and `psort` (range), both strings, except the tenant-authorizer table which uses `pk` with no range key.
 
 EU region note: DDmR DynamoDB tables are in `eu-central-1`, not `eu-west-1`.
 
@@ -19,9 +19,9 @@ EU region note: DDmR DynamoDB tables are in `eu-central-1`, not `eu-west-1`.
 Primary key: `pkey` (hash) / `psort` (range)
 
 GSIs:
-- `group_index` — hash key `group_key`, projection `ALL` (the **only** GSI on this table)
+- `group_index`: hash key `group_key`, projection `ALL` (the **only** GSI on this table)
 
-There is **no `tenant_index`** — it was removed in DDMR-1035 (2026-04-02) and is absent from both the Terraform definition and every live table. To find all of a tenant's rows you must `Scan` with a filter (e.g. `contains(pkey, "<tenant>")`); there is no tenant-partitioned index. When you already know a group, prefer a direct primary-key `Query` on `pkey = GROUP#<tenant>|<groupId>` (or `group_index` by `group_key`) over a scan.
+There is **no `tenant_index`**. It was removed in DDMR-1035 (2026-04-02) and is absent from both the Terraform definition and every live table. To find all of a tenant's rows you must `Scan` with a filter (e.g. `contains(pkey, "<tenant>")`); there is no tenant-partitioned index. When you already know a group, prefer a direct primary-key `Query` on `pkey = GROUP#<tenant>|<groupId>` (or `group_index` by `group_key`) over a scan.
 
 Key patterns:
 
@@ -50,9 +50,9 @@ The `GROUP#<tenant>|<groupId> / DIVISION` row is written only by the `DeviceGrou
 Primary key: `pkey` (hash) / `psort` (range)
 
 GSIs:
-- `declaration_index` — hash key `declaration_key`, projection `ALL` (the **only** GSI on this table)
+- `declaration_index`: hash key `declaration_key`, projection `ALL` (the **only** GSI on this table)
 
-There is **no `tenant_index`** — it was removed in DDMR-1035 (2026-04-02) from both Terraform and all live tables (staging, integration, and prod). The `ddmr-tenant-migration-job` queries `tenant_index` (see `DynamoDbService.kt`), so it **cannot function** as written: the index it depends on no longer exists. That is a structural consequence of DDMR-1035, not a deployment state.
+There is **no `tenant_index`**. It was removed in DDMR-1035 (2026-04-02) from both Terraform and all live tables (staging, integration, and prod). The `ddmr-tenant-migration-job` queries `tenant_index` (see `DynamoDbService.kt`), so it **cannot function** as written: the index it depends on no longer exists. That is a structural consequence of DDMR-1035, not a deployment state.
 
 **Trap: the GitOps config does not reflect reality here.** `ddmr-deployments` still declares this CronJob as enabled, so reading intent from that repo will tell you the job runs. Check the cluster instead: `kubectl get cronjob -A | grep tenant-migration`.
 
@@ -66,7 +66,7 @@ Key patterns:
 
 The `declaration_index` GSI is used to find all assignments for a given declaration (e.g., when deleting a declaration, all its assignments are removed first). Because projection is `ALL`, the full assignment item is available from the index without a second read. Note the GSI is keyed only on `declaration_key` (`DECL#<id>`), so it is **not** tenant-scoped; callers that read it must filter by the row's `tenant` attribute themselves.
 
-An assignment is uniquely identified by `MDM#<tenant>|<device>|<channel>` + `A#<identifier>`. **`tag` is a non-key attribute, not part of the key** — null is persisted as the empty string `""`, and null/empty are treated as equal. Because tag is not in the key, a given `(tenant, device, channel, identifier)` slot holds exactly one assignment with exactly one tag value; you cannot have two assignments for the same slot differing only by tag. Add/remove are guarded by a conditional write requiring both the tenant and tag to match the existing row, so a write under a different tag is rejected (surfacing as a `wrong tenant or tag` / `tag mismatch` result) rather than clobbering another owner's assignment. This is the storage-level mechanism behind the tag-based ownership isolation and the `401 "Tenant mismatch"` behavior described in `services/declaration-storage-service.md`. Declaration IDs are random UUIDs (`UUID.randomUUID()` in `createDeclaration`), not content hashes, so a `DECL#<id>` belongs to exactly one declaration owned by one tenant.
+An assignment is uniquely identified by `MDM#<tenant>|<device>|<channel>` + `A#<identifier>`. **`tag` is a non-key attribute, not part of the key.** Null is persisted as the empty string `""`, and null/empty are treated as equal. Because tag is not in the key, a given `(tenant, device, channel, identifier)` slot holds exactly one assignment with exactly one tag value; you cannot have two assignments for the same slot differing only by tag. Add/remove are guarded by a conditional write requiring both the tenant and tag to match the existing row, so a write under a different tag is rejected (surfacing as a `wrong tenant or tag` / `tag mismatch` result) rather than clobbering another owner's assignment. This is the storage-level mechanism behind the tag-based ownership isolation and the `401 "Tenant mismatch"` behavior described in `services/declaration-storage-service.md`. Declaration IDs are random UUIDs (`UUID.randomUUID()` in `createDeclaration`), not content hashes, so a `DECL#<id>` belongs to exactly one declaration owned by one tenant.
 
 Declaration payloads are prefixed `json:` (plaintext) or `iron:` (IronCore encrypted). Encrypted items also store an `edek` (encrypted data encryption key) alongside the payload.
 
@@ -77,15 +77,15 @@ Declaration payloads are prefixed `json:` (plaintext) or `iron:` (IronCore encry
 Primary key: `pk` (hash only, no range key)
 
 GSIs:
-- `claimTenantMigration_index` — hash key `claimTenantMigration`, projection `ALL`
+- `claimTenantMigration_index`: hash key `claimTenantMigration`, projection `ALL`
 
-This table does not follow the `pkey`/`psort` convention — it uses `pk` as the sole primary key attribute.
+This table does not follow the `pkey`/`psort` convention. It uses `pk` as the sole primary key attribute.
 
 ## Cross-service isolation
 
 Services own their own tables and do not cross-read. For example:
 
-- Scoping engine stores declaration identifiers (`DECL#<id>`) as foreign references in scope items, but calls declaration-storage-service over HTTP (via `DeclarationStorageWrapper`) for declaration creation, payload editing, and device assignment — rather than querying declaration-storage's table directly.
+- Scoping engine stores declaration identifiers (`DECL#<id>`) as foreign references in scope items, but calls declaration-storage-service over HTTP (via `DeclarationStorageWrapper`) for declaration creation, payload editing, and device assignment, rather than querying declaration-storage's table directly.
 - Declaration-storage-service stores assignment records keyed by device+channel but has no awareness of scoping engine's `SCOPE#` or `MEMBERSHIP#` items.
 
 Communication between services happens via HTTP (synchronous) or Pulsar events (asynchronous). There is no shared DynamoDB table between any two DDmR services.
