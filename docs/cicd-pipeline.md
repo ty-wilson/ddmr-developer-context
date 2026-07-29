@@ -157,3 +157,26 @@ Structure:
 - `helm/`: Helm chart values organized by tool, with per-env value files (`values-all.yaml`, `values-prod.yaml`, `values-stable-dev.yaml`, etc.).
 
 For tools in `ddmr-deployments`, updates flow through `updateStaging.groovy` / `updateProduction.groovy` in `ddmr-jenkins` (writing new image tags directly into these value files) rather than through the GitHub Actions CI release step.
+
+---
+
+## Where to find the data (verify rather than trust)
+
+```bash
+C=~/Projects/DDmR/components; git -C $C fetch origin -q
+
+# Authoritative generator blocks: clusters, envs, namespaces, versions
+git -C $C show origin/main:components/<service>.yaml
+
+# What version is actually deployed where, and is the pin current?
+git -C $C grep -n 'version:\|sharedValuesVersion:' origin/main -- components/<service>.yaml
+cat ~/Projects/DDmR/<service>/values/shared-values-version
+
+# Real workflow set and recent runs (filenames drift)
+gh workflow list --repo jamf/<service>
+gh run list --repo jamf/<service> --limit 5
+
+# What ArgoCD believes, which is the only source for "is it running"
+kubectl --context <ctx> -n argocd get application | grep <service>
+kubectl --context <ctx> get cronjob -A          # a GitOps declaration is not evidence
+```

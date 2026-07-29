@@ -254,3 +254,30 @@ Key differences from commercial stage:
 | `X-EnvironmentId` | JWT sidecar (from JWT claim) | No | `tenantEnv` is `null` |
 | `X-Auth-Src` | `ddmr-authorizer-tenant` (CSA path only) | No | Informational only, not read by scoping-engine |
 | `X-B3-TraceId` / `X-B3-SpanId` | Tracing infrastructure | No | MDC context left unpopulated |
+
+---
+
+## Where to find the data (verify rather than trust)
+
+```bash
+# Does this pod still run the auth sidecar, or has it moved to an in-pod JwtFilter?
+kubectl --context <ctx> -n ddmr-<env> get pod -l app=<service> \
+  -o jsonpath='{.items[0].spec.containers[*].name}'
+
+# Authoritative gateway upstream (tells you 7070 sidecar vs 8080 app)
+git -C ~/Projects/DDmR/tyk-gateway-management grep -n 'target_url' origin/master | grep -i <service>
+
+# Feature-flag and authorizer config actually in force for an environment
+git -C ~/Projects/DDmR/platform-shared-values grep -rn \
+  'generateTenantId\|rejectRequestInStageHack\|authEnabled'
+
+# Which tenant an instance resolves to (generated vs real platform tenant)
+aws dynamodb scan --table-name ddmr-tenant-authorizer \
+  --filter-expression 'tenantId = :t OR platformTenant = :t' \
+  --expression-attribute-values '{":t":{"S":"<tenant-uuid>"}}'
+
+# Inspect a token's claims before assuming which auth path is in play
+echo "<jwt>" | cut -d. -f2 | base64 -d 2>/dev/null | jq .
+```
+
+For the DSS 401 "Tenant mismatch" case specifically, use the triage steps in `dss-401-tenant-mismatch-playbook.md` rather than reasoning from this doc.

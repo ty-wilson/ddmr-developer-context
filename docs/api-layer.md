@@ -215,3 +215,27 @@ Every DDmR service with public API access has two Tyk definitions in prod:
 - **External** (tag `external-<region>`): accepts external (Auth0/CSA) JWTs; routes are restricted via a whitelist. Uses `auth0-to-m2m-with-authorization` middleware which also enforces tenant-level authorization. CORS headers are enabled on external definitions.
 
 For services like DSS where the external API is intentionally limited, the external Tyk definition uses `white_list` to expose only the device-facing MDM protocol paths (e.g., `GET /api/v1/device/{device}/{channel}/tokens`, `PUT /api/v1/declaration`).
+
+---
+
+## Where to find the data (verify rather than trust)
+
+The ApiDefinitions in `tyk-gateway-management` are authoritative for routing. This doc is orientation.
+
+```bash
+T=~/Projects/DDmR/tyk-gateway-management; git -C $T fetch origin -q
+
+# Authoritative listen paths and upstream targets (including the actual port,
+# which depends on whether the pod still runs the auth sidecar)
+git -C $T grep -n 'listen_path\|target_url' origin/master -- . | grep -i <service>
+
+# Which paths a product whitelists, and what it blacklists
+git -C $T grep -n -A5 'allowed_paths\|white_list\|black_list' origin/master -- . | head -30
+
+# Scope requirements enforced at the gateway vs in the pod
+git -C $T grep -rn 'scope' origin/master -- . | grep -i <service>
+git -C ~/Projects/DDmR/<service> grep -n 'requiredScopes' origin/main -- src/main
+
+# Current route set from the generated spec (published after each release)
+curl -s https://docs.jamf.build/<service>/current/openapi.json | jq -r '.paths | keys[]'
+```

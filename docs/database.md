@@ -103,3 +103,32 @@ IAM policy documents for DynamoDB access are also in the same directory:
 - `declaration-serviceaccount-policy.json`
 - `tenant-authorizer-serviceaccount-policy.json`
 - `tenant-migration-serviceaccount-policy.json`
+
+---
+
+## Where to find the data (verify rather than trust)
+
+Table and index shape are cheap to read from the live table. Prefer that over this doc.
+
+```bash
+# Authoritative GSI list (there is no tenant_index; see DDMR-1035 above)
+aws dynamodb describe-table --table-name <table> \
+  --query 'Table.GlobalSecondaryIndexes[].{name:IndexName,keys:KeySchema}'
+
+# Can you actually restore this table? PITR is not uniform across environments.
+aws dynamodb describe-continuous-backups --table-name <table> \
+  --query 'ContinuousBackupsDescription.PointInTimeRecoveryDescription'
+
+# Without a tenant index, finding a tenant's rows means a filtered scan
+aws dynamodb scan --table-name <table> \
+  --filter-expression 'contains(pkey, :t)' \
+  --expression-attribute-values '{":t":{"S":"<tenant>"}}' --max-items 5
+
+# Prefer a primary-key query when you know the group
+aws dynamodb query --table-name ddmr-scoping-engine \
+  --key-condition-expression 'pkey = :p' \
+  --expression-attribute-values '{":p":{"S":"GROUP#<tenant>|<groupId>"}}'
+
+# Is the tenant-migration CronJob actually deployed? (the GitOps config says yes)
+kubectl get cronjob -A | grep tenant-migration
+```
