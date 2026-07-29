@@ -61,7 +61,7 @@ These tables are the expensive-to-rediscover core of this document: rebuilding t
 | Topic (short name)                        | Producer                     | Known Consumers              | Schema | Compat            |
 |-------------------------------------------|------------------------------|------------------------------|--------|-------------------|
 | `blueprint-deployment-task`               | blueprint-management-service | blueprint-deployment-service | On     | FORWARD_TRANSITIVE |
-| `blueprint-component-translation-changed` | blueprint-management-service | blueprint-management-service | On     | FORWARD_TRANSITIVE |
+| `blueprint-component-translation-changed` | blueprint-management-service, blueprint-component-sw-update-service | blueprint-management-service | On     | FORWARD_TRANSITIVE |
 
 ### pdd/apple-ddm
 
@@ -109,6 +109,7 @@ Declaration Storage Service
 blueprint-management-service ─── blueprint-deployment-task (pdd/blueprints) ──► blueprint-deployment-service
 blueprint-deployment-service ─── blueprint-deployment-changed (pdd/default)  ──► blueprint-management-service
 blueprint-management-service ─── blueprint-component-translation-changed ──────► blueprint-management-service (self)
+blueprint-component-sw-update-service ─── blueprint-component-translation-changed ──► blueprint-management-service
 
 Jamf Pro (ddm-statusreporting)
   └─── statusreport (pdd/apple-ddm) ────────────────────────────► blueprint-report-aggregation-service
