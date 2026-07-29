@@ -1,6 +1,6 @@
 # API Layer
 
-Last reviewed: 2026-06-24
+Last reviewed: 2026-06-24; amended 2026-07-29 to mark the sidecar-port upstreams as non-durable and to add the pod-level scope trap. **Not re-verified:** the route tables, Tyk product lists, and whitelist contents all date from the 2026-06-24 pass — read the ApiDefinitions in `tyk-gateway-management` and the generated OpenAPI spec for current truth.
 
 ## Overview
 
@@ -100,7 +100,7 @@ Services running as in-cluster pods (scoping-engine, declaration-storage-service
 
 The two scopes are not interchangeable on a given URL — Tyk's SecurityPolicy is bound to specific ApiDefinitions/listen paths.
 
-Both the gateway and the in-pod `JwtFilter` enforce scope. The pod's `JwtScopeValidator` (`src/main/kotlin/com/jamf/declaration/auth/JwtFilter.kt`) accepts the JWT if it carries **any** of the configured `requiredScopes`. The default set is `{declaration-service-product, blueprint-components-api-product}`, so a request that survives Tyk's path-bound check on either route also satisfies the pod-level check. Pre-PR-#158 (DDMR-1088), `JwtScopeValidator` accepted only a single scope, so traffic via the blueprint-components route would have been rejected by the pod even though Tyk authorized it; PR #158 broadened it to ANY-match.
+Both the gateway and the in-pod `JwtFilter` enforce scope. The pod's `JwtScopeValidator` (`src/main/kotlin/com/jamf/declaration/auth/JwtFilter.kt`) accepts the JWT if it carries **any** of the configured `requiredScopes`. The default set is the union of the Tyk products that route to this pod (`{declaration-service-product, blueprint-components-api-product}` at the time of writing — read the current value from the service's config), so a request that survives Tyk's path-bound check on either route also satisfies the pod-level check. **Trap: adding a third Tyk route to this pod requires widening the pod-level set too**, or Tyk will authorize traffic that the pod then rejects. Pre-PR-#158 (DDMR-1088), `JwtScopeValidator` accepted only a single scope, so traffic via the blueprint-components route would have been rejected by the pod even though Tyk authorized it; PR #158 broadened it to ANY-match.
 
 ---
 
@@ -108,7 +108,9 @@ Both the gateway and the in-pod `JwtFilter` enforce scope. The pod's `JwtScopeVa
 
 All scoping-engine routes are under `/api/v1`. Tyk strips `/scoping`, so the full external path is `/scoping/api/v1/...`.
 
-| Method | Path | Handler |
+Paths and their purpose are the durable contract here. The authoritative, always-current list is the generated OpenAPI spec (`reusable-api-export.yml` publishes it after each release — see `cicd-pipeline.md`); use this table for orientation and that spec for certainty.
+
+| Method | Path | Purpose |
 |---|---|---|
 | `HEAD` | `/api/v1` | Connectivity check (unauthenticated) |
 | `POST` | `/api/v1/scope` | Create scope |

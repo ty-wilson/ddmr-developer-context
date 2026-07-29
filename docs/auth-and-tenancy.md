@@ -1,6 +1,6 @@
 # Auth And Tenancy
 
-Last reviewed: 2026-06-24
+Last reviewed: 2026-06-24; amended 2026-07-29 to make this doc the owner of the sidecar-vs-in-pod question and to convert cache/window constants into their consequences. **Not re-verified:** which specific services still run the sidecar, the environment-profile details, and the division-context section — check those against the cluster and code before relying on them.
 
 ## Overview
 
@@ -103,7 +103,7 @@ The `ddmr-authorizer-tenant` is a Spring Boot WebFlux service acting as a Lambda
 
 - Validates the CSA JWT via Spring Security's `oauth2ResourceServer().jwt()` with the CSA JWKS URI from S3.
 - Requires `token_use == "access"` on the JWT.
-- When the `rejectRequestInStageHack` feature flag is enabled: temporarily rejects the first request per `(organizationId, customerId)` pair for one hour (simulating a missing `tenant_id` claim), and also checks that the JWT scope matches `all-basic-cloud-services:allow`.
+- When the `rejectRequestInStageHack` feature flag is enabled: **deliberately** rejects the first request per `(organizationId, customerId)` pair for a fixed window, to simulate a missing `tenant_id` claim. It also checks that the JWT scope matches `all-basic-cloud-services:allow`. **Trap:** a 401 in stage may be this hack rather than a real failure — check whether the flag is on before debugging further.
 - Looks up the mapping `ORG#<organizationId>#<instanceId>` in a DynamoDB table (`tenant-authorizer`) keyed by `pk`.
 - If no entry exists and `generateTenantId` is enabled, generates a UUID and writes it with a condition expression to prevent race conditions.
 - If the JWT carries a `tenant_id` claim and it disagrees with the stored record, logs a warning and flags the record for migration (`claimTenantMigration` attribute).
@@ -145,7 +145,7 @@ The tenant must be a valid UUID for Robocop. If the tenant string is not a valid
 
 ---
 
-## Division Context (AD-16 Milestone 1)
+## Division Context (AD-16)
 
 Division is a platform-wide logical subsection of an environment — similar to Sites in Jamf Pro or Locations in Jamf School. Division-aware filtering is each service's responsibility (see [AD-16](https://jamfsoftware.atlassian.net/wiki/spaces/ARCH/pages/5577703604)). The platform's contract is: services receive a `divisionId` UUID on the M2M JWT claim; everything else (storage, filtering, reference-consistency) is up to the service.
 
@@ -217,7 +217,9 @@ The `CsaTokenProvider` (in `declaration-storage-client-core`) is used by service
 - Fetches and caches the access JWT, refreshing it in a background thread once half the TTL has elapsed.
 - Exposes the cached JWT via `Supplier<String>` for use in `DeclarationClientCsaAuth`, which sets both the `Authorization: Bearer <token>` header and a required `x-customer-id` header.
 
-CSA JWKS keys are served from S3 (e.g., `csa-public-key-store-production.s3.amazonaws.com`). The sidecar loads those keys at startup and caches them for 24 hours.
+CSA JWKS keys are served from S3 (e.g., `csa-public-key-store-production.s3.amazonaws.com`). The sidecar loads those keys **at startup** and caches them for a long TTL (read the value from the sidecar's config rather than from here).
+
+**Trap: a rotated CSA signing key is not picked up until the cache expires or the pod restarts.** Because the fetch happens at startup and the TTL is measured in hours, a key rotation upstream presents as widespread 401s that no config change fixes. Restart the pods. The health check does not force a refresh.
 
 ---
 

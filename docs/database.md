@@ -1,6 +1,6 @@
 # Database
 
-Last reviewed: 2026-07-29 (Tyler Wilson) — documented DSS assignment `tag` as a non-key, conditional-write-guarded attribute, `declaration_index` not being tenant-scoped, and declaration IDs being random UUIDs (verified in `declaration-storage-service` code)
+Last reviewed: 2026-07-29 (Tyler Wilson). Re-verified against `declaration-storage-service` code on that date: the DSS assignment `tag` semantics, `declaration_index` not being tenant-scoped, and declaration IDs being random UUIDs. **Not re-verified and older:** the scoping-engine key patterns, the tenant-authorizer table, and the cross-service isolation notes — treat those as pointers and confirm before relying on them.
 
 ## Overview
 
@@ -52,7 +52,9 @@ Primary key: `pkey` (hash) / `psort` (range)
 GSIs:
 - `declaration_index` — hash key `declaration_key`, projection `ALL` (the **only** GSI on this table)
 
-There is **no `tenant_index`** — it was removed in DDMR-1035 (2026-04-02) from both Terraform and all live tables (staging, integration, and prod). The `ddmr-tenant-migration-job` queries `tenant_index` (`DynamoDbService.kt:231`), so it **cannot run** — and as of 2026-07 it is not deployed (no live CronJob or ArgoCD Application in stage/prod), consistent with having been stopped out-of-band. Note the `ddmr-deployments` GitOps config still declares the CronJob `enabled: true`, so it does not reflect the stop.
+There is **no `tenant_index`** — it was removed in DDMR-1035 (2026-04-02) from both Terraform and all live tables (staging, integration, and prod). The `ddmr-tenant-migration-job` queries `tenant_index` (see `DynamoDbService.kt`), so it **cannot function** as written: the index it depends on no longer exists. That is a structural consequence of DDMR-1035, not a deployment state.
+
+**Trap: the GitOps config does not reflect reality here.** `ddmr-deployments` still declares this CronJob as enabled, so reading intent from that repo will tell you the job runs. Check the cluster instead: `kubectl get cronjob -A | grep tenant-migration`.
 
 Key patterns:
 

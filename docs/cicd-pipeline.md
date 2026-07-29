@@ -1,6 +1,6 @@
 # CI/CD Pipeline
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-19; amended 2026-07-29 to add the "a GitOps declaration is not evidence something runs" trap. **Not re-verified:** the workflow job graph, action version pins, generator-block inventory, and `ddmr-deployments` contents — read the workflow files and `components/<service>.yaml` for current truth.
 
 ## Release Flow Overview
 
