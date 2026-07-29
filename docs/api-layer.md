@@ -72,6 +72,8 @@ Each ApiDefinition specifies:
 
 Listen paths are what external callers use; the gateway strips the prefix before forwarding.
 
+**Trap: the upstream ports below are not durable.** `:7070` is the `ddmr-jwt-sidecar` port; a service that has migrated to an in-pod `JwtFilter` is targeted on `:8080` instead. Services have been moving off the sidecar since DDMR-1088, so treat the ports in this table as illustrative and read the actual `proxy.target_url` from the ApiDefinition in `tyk-gateway-management` (`grep -rn target_url` there). See `auth-and-tenancy.md`, which owns the sidecar-vs-in-pod question. The **listen paths** and the internal/external split are the durable content here.
+
 | Tyk Product | Listen Path | Upstream Service (prod) | Internal / External |
 |---|---|---|---|
 | `scope-eng` | `/scoping` (prod, stage→integration); `/scope-eng-prerelease` (stage→ddmr-stage) | `scoping-engine-svc.ddmr-<env>:7070` | Both |

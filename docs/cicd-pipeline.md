@@ -148,7 +148,9 @@ The `lib/` directory contains bundled Groovy JAR dependencies.
 
 ## ddmr-deployments
 
-`ddmr-deployments` is an older Helm-values repository that predates the `components` / ApplicationSet pattern. It is still used for a small number of tooling applications (scope-membership-tool, mdm-tool, tenant-migration jobs) that use the older deployment pattern.
+`ddmr-deployments` is an older Helm-values repository that predates the `components` / ApplicationSet pattern. It carries a small number of tooling applications (scope-membership-tool, mdm-tool, tenant-migration) that use the older deployment pattern.
+
+**Trap: a declaration in this repo does not mean the thing is running.** `ddmr-deployments` declares the tenant-migration CronJob as enabled, but that job cannot function since the `tenant_index` GSI it queries was removed (DDMR-1035) — see `database.md`. Confirm against the cluster (`kubectl get cronjob -A`) rather than reading intent from this repo.
 
 Structure:
 - `argo/apps/` — ArgoCD ApplicationSet YAMLs for the remaining tools. These use a `list` generator (explicit cluster/namespace entries) rather than the `clusters` selector pattern, and point directly at `helm/` subdirectories in this repo as their source. Example: `scope-membership-tool-appset.yaml`, `mdm-tool-appset.yaml`, `tenant-migration-job-appset.yaml`, `tenant-authorizer-appset.yaml`.

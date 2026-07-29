@@ -9,7 +9,16 @@ DDmR services use two ingress mechanisms, and traffic does not always pass throu
 - **Tyk API Gateway (M2M path):** All M2M service-to-service calls route through Tyk, which forwards to the `ddmr-jwt-sidecar` on port 7070. The sidecar validates the M2M JWT and injects HTTP headers (primarily `X-TenantId`) before proxying to the application on port 8080.
 - **HAProxy Ingress (CSA/legacy path):** Some services (notably DSS) define a separate HAProxy-based Kubernetes ingress that routes directly to the application on port 8080, **bypassing the sidecar**. Authentication is handled by the `ddmr-authorizer-tenant` via HAProxy's `auth-url` annotation — the authorizer validates the CSA JWT and returns `X-TenantId`, which HAProxy injects into the forwarded request.
 
-Services read `X-TenantId` regardless of which path delivered it. The `spring-m2m-authentication` library provides in-process M2M JWT validation as an alternative to the sidecar; declaration-service and DSS each ship their own in-pod `JwtFilter` (see "In-Pod JwtFilter" below). The migration off the sidecar started with declaration-service under DDMR-1088 and DSS has since followed; scoping-engine still uses the sidecar.
+Services read `X-TenantId` regardless of which path delivered it. The `spring-m2m-authentication` library provides in-process M2M JWT validation as an alternative to the sidecar; declaration-service and DSS each ship their own in-pod `JwtFilter` (see "In-Pod JwtFilter" below). The migration off the sidecar began with declaration-service under DDMR-1088, and other services have followed since.
+
+**This doc owns the sidecar-vs-in-pod question; other docs should link here rather than restate it.** Which services still run the sidecar changes over time, so do not trust a list. It matters because the two paths differ in *where* the tenant arrives (a proxy-injected header vs an in-process exchange attribute), and it decides whether a pod's ingress port is the sidecar's or the app's. Both are cheap to check and expensive to guess wrong:
+
+```bash
+# Does this pod still run the auth sidecar?
+kubectl get pod -n ddmr-<env> -l app=<service> -o jsonpath='{.items[0].spec.containers[*].name}'
+# What port does the gateway actually target? (authoritative)
+grep -rn "target_url" tyk-gateway-management/ | grep <service>
+```
 
 ---
 

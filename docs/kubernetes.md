@@ -61,7 +61,7 @@ The file `values/shared-values-version` contains a single git commit SHA (e.g. `
 
 ## Pod Topology
 
-Each pod runs two containers:
+A pod runs the service container plus, **only if `.Values.auth` is set**, the `ddmr-jwt-sidecar` container. Services have been migrating to an in-pod `JwtFilter` instead (since DDMR-1088), so do not assume two containers. `auth-and-tenancy.md` owns that question; check a specific pod with `kubectl get pod -o jsonpath='{.spec.containers[*].name}'`.
 
 **service** (`container.*` values)
 - Spring Boot application on port 8080
@@ -112,8 +112,9 @@ Both outputs are active simultaneously in deployed environments.
 
 ## Namespace
 
-- **HC (dev/integration/stage/perf):** `ddmr-stage` namespace
-- **Commercial prod:** namespace varies by region/cluster; injected via the platform-shared-values overlay at deploy time
+The namespace comes from the ApplicationSet generator (the `namespace` value in `components/<service>.yaml`), not from the chart. Observed values include `ddmr-dev`, `ddmr-stage`, `ddmr-integration`, and `ddmr-prod`; read the generator block for the authoritative mapping rather than trusting a list here (`cicd-pipeline.md` covers the generator).
+
+**Trap: namespace alone does not identify the partition.** `ddmr-stage` is used by *both* commercial stage and HC stage, on different clusters. Always pair the namespace with the cluster when reasoning about where something runs, and note that other docs give per-env namespaces for their own purposes (`observability.md` for log queries, `infrastructure.md` for IAM) which may reflect a single environment rather than the full set.
 
 The `Release.Namespace` variable in templates always resolves to the correct namespace for the target cluster — don't hardcode it.
 

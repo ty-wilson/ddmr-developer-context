@@ -8,7 +8,7 @@ The micro-frontend-hub is the Nx + pnpm monorepo that hosts every MFE app for th
 
 ## Monorepo Structure
 
-- **Toolchain**: Nx (package mode) + pnpm workspaces. Node >= 20 required.
+- **Toolchain**: Nx (package mode) + pnpm workspaces. Required Node/pnpm versions are declared in the repo (`.nvmrc`, `package.json` `engines`/`packageManager`) — read them there rather than trusting a version quoted here.
 - **Layout**:
   - `apps/` — all MFE applications (remotes + shells). Each is an independent deployable unit.
   - `libs/` — shared libraries published to the internal Artifactory npm registry (`https://artifactory.jamf.build/artifactory/api/npm/npm-local/`).

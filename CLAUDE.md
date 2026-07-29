@@ -35,7 +35,7 @@ All services below participate in the Blueprints system (`system: blueprints` in
 
 ### Other Teams
 - **tenants-odin** (Angry Cockroaches) — Tenant management service. DynamoDB.
-- **device-group-inventory-service** (Data Manager) — Platform proxy to Jamf Pro group API. PostgreSQL cache + pass-through. No division data currently.
+- **device-group-inventory-service** (Data Manager) — Platform proxy to Jamf Pro group API. PostgreSQL cache + pass-through. Did not surface division/site data as of 2026-04-15 (re-check before designing around it).
 - **device-declaration-reporting-service** (Jabberwocky) — Reporting backend for declaration status per device.
 - **micro-frontend-hub** — Nx + pnpm monorepo: all MFE apps (declarations, config-profiles, JSFG, etc.)
 - **json-schema-form-generator** — Standalone repo for the JSFG component.
@@ -78,7 +78,7 @@ All services below participate in the Blueprints system (`system: blueprints` in
 
 ## Deep Dives
 
-IMPORTANT: When answering questions about cross-service concerns, do NOT guess or infer from partial information. Read the relevant doc below BEFORE answering. These docs contain verified information about service interactions, event consumers, API contracts, and infrastructure that cannot be reliably inferred from a single repo's code.
+IMPORTANT: When answering questions about cross-service concerns, do NOT guess or infer from partial information. Read the relevant doc below BEFORE answering — they record cross-service facts that are expensive to rediscover from any single repo. Read for orientation, then verify (see the note at the end of this file).
 
 - **HTTP calls between services, Tyk gateway, API contracts** → read `../ddmr-developer-context/docs/api-layer.md`
 - **Pulsar events, topic routing, event schemas** → read `../ddmr-developer-context/docs/event-layer.md`
@@ -94,6 +94,6 @@ IMPORTANT: When answering questions about cross-service concerns, do NOT guess o
 - **Micro-frontends, schema pipeline, shell integration** → read `../ddmr-developer-context/docs/frontend.md`
 - **Internals of a specific service** (data model, API details, design decisions) → read `../ddmr-developer-context/services/<service-name>.md`
 
-**Accuracy note:** These docs are point-in-time snapshots. For important decisions, verify claims against the actual code — treat these as orientation, not source of truth.
-
-If you discover that information in these docs is outdated or incorrect based on what you observe in the code, flag it to the user. To update the docs, use the `/update-context` skill (installed globally at `~/.claude/skills/update-context/SKILL.md`).
+**These docs are a map, not a source of truth** — they tell you what exists and where, not what it currently says. Re-verify in code anything you intend to build on; never trust a value quoted here (version, count, size, timeout), read it from the repo.
+- **Check unmerged branches** (`git fetch`, then `for-each-ref refs/remotes/origin`) before concluding another team hasn't built something: negative claims here ("no consumer", "not implemented", "does not support") were derived from `main` at review time.
+- **Durable core:** consumer/caller lists, traps, and stable identifiers. `Last reviewed` means last *edited*, not re-verified. Found something wrong? Flag it, then use `/update-context`.
