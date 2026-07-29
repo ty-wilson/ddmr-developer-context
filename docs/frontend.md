@@ -1,10 +1,10 @@
 # Frontend
 
-Last reviewed: 2026-07-29
+Last reviewed: 2026-07-29. Re-verified against code/live endpoints on that date: the MDM schema + translations pipeline, the CP-vs-declarations consumption split, and JSFG's localization handling. The monorepo/tooling and MFE-app sections were not re-verified and are older; treat them as a pointer only.
 
 ## micro-frontend-hub monorepo
 
-All Jamf shared UI is maintained in a single Nx (package mode) + pnpm 9 workspace at `jamf/micro-frontend-hub`. Node.js v20 is required.
+All Jamf shared UI is maintained in a single Nx (package mode) + pnpm workspace at `jamf/micro-frontend-hub`. Required Node and pnpm versions are declared in the repo (`.nvmrc`, `package.json` `engines`/`packageManager`) and in its own `CLAUDE.md` under Prerequisites. Read them there rather than trusting a version quoted here.
 
 ```
 micro-frontend-hub/
@@ -112,13 +112,13 @@ EventBridge scheduler (hourly)
   → transformation Lambda
       reads YAML from EFS, converts to JSON Schema,
       merges Jamf-specific metadata, uploads to S3
-  → schema-transformed EventBridge event (three parallel Lambdas):
+  → schema-transformed EventBridge event (fans out to parallel Lambdas):
       ├── java-enhancements Lambda  (adds javaName, existingJavaType)
       ├── archive Lambda            (commits schemas to archive git repo)
       └── translations Lambda      (generates translation schemas)
 ```
 
-### Storage (three S3 buckets)
+### Storage (S3 buckets)
 
 | Bucket | Contents |
 |--------|----------|
@@ -170,16 +170,23 @@ Override fields (all optional, keyed per property):
 
 **Consumption / `$ref` handling:** JSFG resolves `$ref`s in **both** the schema (`unrefSchema`) and the localizations (`unrefLocalizations`), so fields behind a `$defs`/`$ref` (e.g. array-item types) get localized too. `jamfEnums` reach the Select widget via `setLocalizations(...)`.
 
-**CP vs declarations divergence:** config-profiles forwards schema + ui-schema + localizations to JSFG, so `jamfEnums` labels render. The declarations MFE folds `jamfTitle`/`jamfDescription` into the schema at the query layer (`buildSchemaProperty`) but historically forwarded **no** ui-schema/localizations, so declaration enum dropdowns showed raw values (the gap DDMR-1224 is closing). Note `buildSchemaProperty` also rebuilds the schema through a keyword allow-list, which silently drops Apple constructs it doesn't copy (notably `rangelist` and `assettypes`) — config-profiles avoids this because it never rebuilds.
+**CP vs declarations divergence.** Two mechanisms deliver localization, and they are easy to conflate:
+
+- `jamfTitle` / `jamfDescription` are folded into the *schema* by the declarations query layer (`buildSchemaProperty`), so they apply without any extra wiring.
+- `jamfEnums` are consumed by JSFG's Select widget and only arrive via `setLocalizations(...)`. A component that never calls it gets raw enum values in its dropdowns no matter what the translations contain. Config-profiles forwards schema + ui-schema + localizations; declarations did not, which is why declaration enum dropdowns showed raw values (addressed in DDMR-1224).
+
+**Trap: `buildSchemaProperty` is a lossy allow-list.** The declarations MFE rebuilds each Apple field by copying a fixed set of keywords, silently discarding anything not on the list (notably `rangelist` and `assettypes`; top-level conditionals are likewise dropped by `convertDeclarationToSchema`). A dropped `rangelist` renders as a free text input that validates nothing. Config-profiles is immune because it never rebuilds the schema. When a declaration field renders or validates unexpectedly, compare the served schema against what reaches JSFG before assuming the schema is at fault.
 
 ---
 
 ## json-schema-form-generator (`@jmf/json-schema-form-generator`)
 
-There are two distinct versions of JSFG:
+**Trap: two separate JSFG codebases exist, and only one renders Blueprints forms.** Confirm which you are reading before drawing conclusions about form behavior.
 
-- **`apps/json-schema-form-generator`** (in `micro-frontend-hub`): The MFE remote — React + Vue 3, `json-schema-library`, `@jamf/mfe-json-schema-form-generator-service`. Loaded at runtime by other MFEs via `FeatureAppLoader`.
-- **Standalone repo** (`jamf/json-schema-form-generator`): Vue 3-only, `vuelidate`. No React, no `json-schema-library`. A separate project; do not conflate with the MFE above.
+- **`apps/json-schema-form-generator`** (inside `micro-frontend-hub`) is the MFE remote that Blueprints component apps actually load at runtime via `FeatureAppLoader`. It validates using `json-schema-library`. **This is the one that renders declarations and config profiles.**
+- **`jamf/json-schema-form-generator`** (standalone sibling repo) is a separate project with its own stack and its own validation approach. It is *not* what the Blueprints MFEs load. Check its commit recency before assuming it is current.
+
+Because they share a name, a grep across sibling repos will hit both. Reasoning about the wrong one produces confident but wrong conclusions about validation and widget behavior.
 
 The in-hub MFE uses nanostores for reactive form state. Communication with the parent happens exclusively through `jamf:json_schema_form_generator_service`:
 - `setJsonSchema(schema)` — pushes a new schema into the form
@@ -192,7 +199,7 @@ The in-hub MFE uses nanostores for reactive form state. Communication with the p
 
 ## Blueprint backend services
 
-Three Spring Boot (Java 21) services back the Blueprints feature. All use M2M OAuth2 authentication and are deployed on the OCEAN Kubernetes platform.
+Spring Boot services back the Blueprints feature. All use M2M OAuth2 authentication and are deployed on the OCEAN Kubernetes platform. Language/runtime versions are declared in each repo's build files. The service map in `CLAUDE.md` is the authoritative inventory; the ones below are the main Blueprints backends.
 
 ### blueprint-management-service
 
@@ -206,8 +213,48 @@ Manages blueprint lifecycle: create, edit, version, deploy, undeploy. Key points
 
 ### blueprint-components-registry-service
 
-Manages the catalog of available Blueprint components — the list of component types that can be added to a Blueprint (e.g., Configuration Profiles, Declarations, App Managed). Exposes a REST API at `/blueprints/components-registry`. No CLAUDE.md was found; the README covers local run and SBOX deployment only.
+Manages the catalog of available Blueprint components — the list of component types that can be added to a Blueprint (e.g., Configuration Profiles, Declarations, App Managed). Exposes a REST API at `/blueprints/components-registry`.
+
+It also decides **which components a product is offered at all**, via a per-product supported-OS capability list in its Spring config (`jamf.product.capabilities.supported-operating-systems`, keyed `pro` / `school`). This is a *product-wide* list and is distinct from an individual declaration's own `supportedOS`, so the two can disagree. When a UI offers a component on a platform Apple doesn't support, check both this config and the owning component service's per-item metadata.
 
 ### blueprint-component-declarations-service
 
 Manages declaration assignment data for Blueprint components of type "declarations". Persists the declaration payloads authored in the `blueprint-component-declarations` MFE. REST API at `/blueprints/components/declarations`.
+
+---
+
+## Where to find the data (verify rather than trust)
+
+The schema/translations claims above are all cheaply checkable. Prefer these over the prose. `sbox` reads the `dev`-tier buckets; substitute a real version for `<ver>`.
+
+```bash
+GW=https://tyk.sbox.ocean.jamf.build/mdm-schema
+
+# Which version will the MFEs actually request? (the "last supported" one)
+curl -s -H "X-TenantId: default-tenant" -H "tenantId: default-tenant" "$GW/v1/version"
+
+# Raw Apple declaration schema: check rangelist / supportedOS / minimum yourself
+curl -s -H "X-TenantId: default-tenant" -H "tenantId: default-tenant" \
+  "$GW/v1/declarative/<ver>/configurations/<shortType>"
+
+# Transformed JSON Schema for a config-profile payload
+curl -s -H "X-TenantId: default-tenant" -H "tenantId: default-tenant" \
+  "$GW/v1/metadata/<ver>/<payloadType>"
+
+# Served translations, including jamfTitle / jamfDescription / jamfEnums
+curl -s "$GW/v1/translations/<ver>/<fullDeclarationType>/en-US"
+
+# Deploy a translations branch to an env bucket (dev|stage|prod)
+gh workflow run s3-upload.yml --repo jamf/mdm-schema-translations \
+  -f env=dev -f ref_name=<branch>
+```
+
+If a declaration renders or validates unexpectedly, diff the **served** schema against what the MFE hands JSFG. The allow-list trap above means the two can legitimately differ.
+
+Before concluding another team has not implemented something, check unmerged work:
+
+```bash
+git -C <repo> fetch origin --quiet
+git -C <repo> for-each-ref --sort=-committerdate \
+  --format='%(committerdate:short) %(refname:short)' refs/remotes/origin | head -20
+```
