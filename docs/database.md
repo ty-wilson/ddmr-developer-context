@@ -1,6 +1,6 @@
 # Database
 
-Last reviewed: 2026-06-24 (Tyler Wilson)
+Last reviewed: 2026-07-13 (Tyler Wilson) — corrected: `tenant_index` GSI removed from scoping-engine and declaration-storage tables (all envs) in DDMR-1035 on 2026-04-02; added group→division row
 
 ## Overview
 
@@ -19,18 +19,20 @@ EU region note: DDmR DynamoDB tables are in `eu-central-1`, not `eu-west-1`.
 Primary key: `pkey` (hash) / `psort` (range)
 
 GSIs:
-- `group_index` — hash key `group_key`, projection `ALL`
-- `tenant_index` — hash key `tenant`, projection `KEYS_ONLY`
+- `group_index` — hash key `group_key`, projection `ALL` (the **only** GSI on this table)
+
+There is **no `tenant_index`** — it was removed in DDMR-1035 (2026-04-02) and is absent from both the Terraform definition and every live table. To find all of a tenant's rows you must `Scan` with a filter (e.g. `contains(pkey, "<tenant>")`); there is no tenant-partitioned index. When you already know a group, prefer a direct primary-key `Query` on `pkey = GROUP#<tenant>|<groupId>` (or `group_index` by `group_key`) over a scan.
 
 Key patterns:
 
 | pkey | psort | Description |
 |------|-------|-------------|
-| `SCOPE#<tenant>\|<scopeId>` | `METADATA` | Scope metadata (enabled flag, etc.) |
+| `SCOPE#<tenant>\|<scopeId>` | `METADATA` | Scope metadata (enabled flag, `division_id` when scope is division-owned) |
 | `SCOPE#<tenant>\|<scopeId>` | `GROUP#<groupId>` | Scope-to-group membership. Sets `group_key` for group_index. |
 | `SCOPE#<tenant>\|<scopeId>` | `DECL#<identifier>` | Declaration assigned to a scope |
 | `SCOPE#<tenant>\|<scopeId>` | `APP#<assetId>` | VPP app assigned to a scope |
 | `MEMBERSHIP#<tenant>\|<deviceId>` | `GROUP#<groupId>` | Device-to-group membership. Sets `group_key` for group_index. |
+| `GROUP#<tenant>\|<groupId>` | `DIVISION` | Group→division mapping (`division_id`). Absence of the row = group has no division ("global"). |
 | `DEVICE-CHANNEL#<tenant>\|<deviceId>` | `C#<channel>` | Device channel info (type, deprecated, remove flags) |
 | `DEVICE#<tenant>\|<deviceId>\|<channel>` | `SYNC` | Device sync state |
 | `DEVICE#<tenant>\|<deviceId>` | `GROUPS_DECL` | Management properties declaration for a device |
@@ -39,7 +41,7 @@ The `group_key` attribute encodes both tenant and scope state. For scope-group i
 - Find all scopes that contain a given group (filter on scope key prefix)
 - Find all devices that belong to a given group (filter on membership key prefix)
 
-The `tenant_index` is `KEYS_ONLY` and is defined in Terraform, but no service code currently queries it — it likely exists for operational or tooling queries.
+The `GROUP#<tenant>|<groupId> / DIVISION` row is written only by the `DeviceGroupDivisionChangedHandler` consuming the `device-group-division-changed` Pulsar event (never by the REST scope-save path), and is read by the divisions validation on `POST`/`PUT /scope`: a division-scoped caller can only scope a group whose stored `division_id` matches the caller's division, so a group with no `DIVISION` row is rejected with 400 "Invalid group id". See [event-layer.md] and the scoping-engine service doc.
 
 ### declaration-storage-service
 
@@ -48,8 +50,9 @@ The `tenant_index` is `KEYS_ONLY` and is defined in Terraform, but no service co
 Primary key: `pkey` (hash) / `psort` (range)
 
 GSIs:
-- `declaration_index` — hash key `declaration_key`, projection `ALL`
-- `tenant_index` — hash key `tenant`, projection `KEYS_ONLY` — **staging only.** As of 2026-06 the **prod** `ddmr-declaration-storage` table has *only* `declaration_index`; `tenant_index` has been removed in prod. The `ddmr-tenant-migration-job` (which queries `tenant_index` to remap a tenant's items) is consequently idle in prod.
+- `declaration_index` — hash key `declaration_key`, projection `ALL` (the **only** GSI on this table)
+
+There is **no `tenant_index`** — it was removed in DDMR-1035 (2026-04-02) from both Terraform and all live tables (staging, integration, and prod). The `ddmr-tenant-migration-job` queries `tenant_index` (`DynamoDbService.kt:231`), so it **cannot run** — and as of 2026-07 it is not deployed (no live CronJob or ArgoCD Application in stage/prod), consistent with having been stopped out-of-band. Note the `ddmr-deployments` GitOps config still declares the CronJob `enabled: true`, so it does not reflect the stop.
 
 Key patterns:
 

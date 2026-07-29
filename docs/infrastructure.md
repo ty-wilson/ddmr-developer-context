@@ -44,12 +44,12 @@ Production is the only multi-region deployment for ddmr-terraform. HC stage is c
 
 ### DynamoDB Tables
 
-Table schemas are defined as YAML files in `grunt/` (ddmr-terraform) and `infrastructure/aws/module_vars/` (ddmr-infrastructure). All tables use a single-table design with string `pkey`/`psort` (or `pk`) keys. Per-environment table names follow the pattern `ddmr-{env}-{service}`. **Production drops the env segment** — the prod tables are `ddmr-declaration-storage`, `ddmr-scoping-engine`, and `ddmr-tenant-authorizer` (account 613358915025, us-east-1). Note also that the prod `ddmr-declaration-storage` table currently has only the `declaration_index` GSI; the `tenant_index` GSI (below) exists in staging but has been removed in prod.
+Table schemas are defined as YAML files in `grunt/` (ddmr-terraform) and `infrastructure/aws/module_vars/` (ddmr-infrastructure). All tables use a single-table design with string `pkey`/`psort` (or `pk`) keys. Per-environment table names follow the pattern `ddmr-{env}-{service}`. **Production drops the env segment** — the prod tables are `ddmr-declaration-storage`, `ddmr-scoping-engine`, and `ddmr-tenant-authorizer` (account 613358915025, us-east-1). The `tenant_index` GSI that used to exist on the declaration-storage and scoping-engine tables was removed in DDMR-1035 (2026-04-02) and is now absent from Terraform and every live table.
 
 | Service                   | Table name (staging example)              | GSIs                                      |
 |---------------------------|-------------------------------------------|-------------------------------------------|
-| declaration-storage-service | ddmr-staging-declaration-storage        | `declaration_index` (declaration_key), `tenant_index` (tenant) |
-| scoping-engine            | ddmr-staging-scoping-engine               | `group_index` (group_key), `tenant_index` (tenant) |
+| declaration-storage-service | ddmr-staging-declaration-storage        | `declaration_index` (declaration_key)     |
+| scoping-engine            | ddmr-staging-scoping-engine               | `group_index` (group_key)                 |
 | tenant-authorizer         | ddmr-tenant-authorizer                    | `claimTenantMigration_index`              |
 
 PITR (point-in-time recovery) is enabled on staging and HC stage tables.
