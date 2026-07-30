@@ -171,7 +171,7 @@ To add a topic or subscription: create the directory/files, open a PR. The `run-
 
 ### Subscription alerting
 
-Each `sub.json` may include an `alertConfiguration` block. The Helm chart (`prometheus-rules.yaml`) emits a `PrometheusRule` per topic, with each alert gated on `alertConfiguration.enabled`. The alert names, which are what you actually search for in Grafana and Alertmanager, are `TopicStorageSizeTooHigh` (topic-level), `HighRedeliveryRate`, `SubscriptionUnackedMessages`, `HighSubscriptionBacklog`, `DLQBacklogNotEmpty`, and `DLQMessageRate`. Regenerate the set with `grep -n 'alert:' helm/event-bus-resources-configuration/templates/prometheus-rules.yaml`.
+Each `sub.json` may include an `alertConfiguration` block. The Helm chart (`prometheus-rules.yaml`) emits a `PrometheusRule` per topic, with each alert gated on `alertConfiguration.enabled`. The alert names, which are what you actually search for in Grafana and Alertmanager, are `TopicStorageSizeTooHigh` (topic-level), `HighRedeliveryRate`, `SubscriptionUnackedMessages`, and `HighSubscriptionBacklog`, plus two that are emitted **only for DLQ topics** (gated on an `isDLQ` condition in the template): `DLQBacklogNotEmpty` and `DLQMessageRate`. So a non-DLQ topic gets four, a DLQ topic gets six. Regenerate the set with `grep -n 'alert:' helm/event-bus-resources-configuration/templates/prometheus-rules.yaml`, and see that repo's own `docs/ALERTING.md` for thresholds and override examples, which it documents in more detail than this file should duplicate.
 
 Alerts are labeled with the topic's `properties.{team,component,system,domain}`, so `pdd/default/` topics with DDmR ownership route alerts to DDmR even when fired by another team's subscription.
 
