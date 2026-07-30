@@ -33,7 +33,21 @@ Base path: `/v1/components/sw-update`. All endpoints accept and return `applicat
 
 ## Data Model
 
-No persistent storage. The single DDM type created is `com.apple.configuration.softwareupdate.enforcement.specific` in group `CONFIGURATION`, with UpperCamelCase payload keys matching Apple's schema (`TargetOSVersion`, `TargetLocalDateTime`, `DetailsURL`).
+**Correction: this service does own a database.** An earlier version of this doc said "no persistent storage, all state lives in DSS". It has a relational datasource with Flyway migrations under `src/main/resources/db/migration/` and a `Version` table behind `VersionRepository`, used to hold the OS version catalogue described below. Declaration payloads still live in DSS; the local database is for versions, not declarations.
+
+The single DDM type created is `com.apple.configuration.softwareupdate.enforcement.specific` in group `CONFIGURATION`, with UpperCamelCase payload keys matching Apple's schema (`TargetOSVersion`, `TargetLocalDateTime`, `DetailsURL`).
+
+## OS version catalogue and the GDMF refresh loop
+
+This is the least obvious part of the service and it is the link between "Apple ships a release" and "Blueprint deployment activity spikes". Verified against `origin/main` on 2026-07-29:
+
+1. A Kubernetes **CronJob** (`<release>-fetch-versions`, schedule from `.Values.cronJobs.updateVersions.schedule`) runs `curl` against the admin port at `/actuator/availableversions`.
+2. That is the `@WriteOperation` on the `availableversions` actuator endpoint, which calls `OsVersionService.updateVersions()`.
+3. `updateVersions()` reads Apple's **GDMF** feed through `GdmfAdapter` / `GdmfClient`, extracting iOS, macOS, and visionOS versions with their posting and expiration dates.
+4. It diffs that set against the `Version` table: obsolete rows deleted, new or changed rows upserted.
+5. **If anything changed**, it calls `notifyTranslationChanged()`, which produces a `blueprint-component-translation-changed` event on Pulsar keyed on the component identifier `com.jamf.ddm.sw-updates`. Per `docs/event-layer.md`, blueprint-management-service consumes that topic.
+
+**Trap: an Apple release can therefore set work in motion with no admin involvement.** Nothing in this service is scheduled internally (no `@Scheduled`, no Pulsar listener), so it is not self-driving in isolation, but the CronJob plus the GDMF diff means a new OS version appearing upstream is enough to emit the translation-changed event. What blueprint-management-service does on receipt is in BMS and is **not verified here**; if you are tracing an OS-release-correlated spike, that consumer is the next hop to read. Related: PI-1341 (Done) recorded roughly 950 Blueprint deployment failures during OS release events, caused by DynamoDB throttling in DSS, and noted that the only automatic recovery was the next Apple release.
 
 **Trap: `DetailsURL` is omitted from the payload entirely rather than set to null** when `detailsURL.included` is false or absent. The DSS payload is forwarded verbatim to Apple devices, so a null would be a different (and invalid) declaration than an absent key.
 
@@ -43,7 +57,7 @@ No persistent storage. The single DDM type created is `com.apple.configuration.s
 |---|---|
 | **Declaration Storage Service (DSS)** | Creates declarations and deletes them by ID, via a Spring HTTP interface client (`DeclarationStorageServiceClient`). |
 | **Jamf M2M (`jamf-platform-m2m`)** | `M2MAccessTokenProvider` supplies a service-to-service Bearer token before each DSS request. Gated by `jamf.platform.m2m.authentication-enabled`. |
-| **Apple GDMF feed** (`GdmfClient` / `GdmfAdapter`) | Reads Apple's software-update feed. This is what makes `AUTOMATIC` enforcement possible: the service needs to know real OS release versions and dates to derive a deadline. |
+| **Apple GDMF feed** (`GdmfClient` / `GdmfAdapter`) | Read by `OsVersionService` to maintain the local OS version catalogue (versions plus posting and expiration dates, per platform). See the refresh loop below. Whether `AUTOMATIC` deadline resolution reads that catalogue was not traced, so do not assume it. |
 | **Apache Pulsar** | Produces `blueprint-component-translation-changed` (see below). |
 
 **Correction: this service is not Pulsar-free.** The previous version of this doc stated "No Pulsar topics produced or consumed." That is wrong. The service depends on `spring-boot-starter-pulsar` and ships a `BlueprintComponentTranslationChangedProducer` plus `MessagingConfiguration`, so it **produces** `blueprint-component-translation-changed`. Note `docs/event-layer.md` attributes that topic's production to blueprint-management-service; this service is an additional producer.
