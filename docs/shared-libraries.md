@@ -201,9 +201,9 @@ Format illustrations (these are **formats, not current tags**, the values are ar
 4. `MAIN` plus the release-candidate marker set → `RC`
 5. Uppercase
 
-**Trap: the default JIRA marker list does not match DDmR ticket keys.** Verified 2026-07-29 on `origin/main`: `jiraMarkers` defaults to `listOf("DDM")` and the matcher is `Pattern.compile("^($marker-\\d+).*")`. DDmR tickets are `DDMR-####`, and `DDMR-1265-...` does **not** match `^(DDM-\d+).*`, because the character after `DDM` is `R`, not `-`. No DDmR repo checked (`scoping-engine`, `declaration-service`, `declaration-storage-service`, all three DSS client repos, `platform-messaging-client-java`, `ddmr-jwt-sidecar`, `ddmr-authorizer-tenant`) overrides `jiraMarkers`.
+**Trap: marker order is load-bearing, because the match loop breaks on the first hit.** Verified 2026-07-29 on `origin/main`: `jiraMarkers` defaults to `listOf("DDMR", "DDM")` and the matcher is `Pattern.compile("^($marker-\\d+).*")`, iterated in list order with a `break` on the first match. `DDMR` must come before `DDM` because `DDM` is a prefix of `DDMR`: with `DDM` first the pattern `^(DDM-\d+).*` fails on a `DDMR-1265-...` branch (the character after `DDM` is `R`, not `-`), and if the list held only `DDM` the shortening step would silently be a no-op, leaving the whole branch slug in version strings and ECR tags. The current default gets this right, so DDmR branches do shorten correctly (`DDMR-1265-ADD-DIVISION-HEADER` becomes `DDMR-1265`). No DDmR repo overrides `jiraMarkers`, and none needs to. If you ever do override it, keep the longer key first.
 
-Consequence: step 3 is a no-op for DDMR branches, so the **entire branch slug** ends up in version strings and ECR image tags (`DDMR-1265-ADD-DIVISION-HEADER` instead of `DDMR-1265`). Cosmetic rather than functional (nothing errors), but it makes branch artifacts hard to correlate to tickets, and it is why some branch tags are far longer than the documented format suggests. The fix is a one-line `jiraMarkers.set(listOf("DDM", "DDMR"))` (or a plugin default change); it has not been raised as a ticket as far as this doc knows. Re-check before acting:
+Re-check before acting:
 
 ```bash
 git -C ~/Projects/DDmR/ddmr-gradle-coordinate-plugin grep -n 'jiraMarkers' origin/main
