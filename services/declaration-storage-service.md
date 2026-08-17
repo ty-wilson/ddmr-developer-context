@@ -133,7 +133,7 @@ DSS has migrated off the JWT sidecar and validates JWTs in-pod via `com.jamf.dec
 
 Helm templates in `helm/declaration-storage-service/templates/` still define a dual-ingress pattern (gated by `ingress.legacyEnabled: true`, the default):
 
-- **`{release}-authorized`**: HAProxy ingress on `/api` (Prefix) → port 8080. Originally used `haproxy-ingress.github.io/auth-url: svc://tenant-authorizer-svc:8080/authorize` to pre-inject `X-TenantId`; with the in-pod filter that pre-injection is no longer the authoritative path.
+- **`{release}-authorized`**: HAProxy ingress on `/api` (Prefix) → port 8080, using `haproxy-ingress.github.io/auth-url: svc://tenant-authorizer-svc:8080/authorize` to pre-inject `X-TenantId`. **The whole template (ingress and annotation) renders only when `ingress.claimlessCsaSupport` is set, which is integration alone** (`grep -rn claimlessCsaSupport values/`). So this ingress does not exist in prod or stage, and the `ddmr-authorizer-tenant` service it points at was removed from those environments in May 2026 (DDMR-1085). In prod, CSA tenant resolution happens in-pod instead: `JwtFilter` → `CsaTenantResolver` → the same `tenant-authorizer` table, per `jwt.csa-tenant-resolver.table`.
 - **`{release}-open`**: unauthenticated, routes `/api/v1` (Exact) for the connectivity check.
 - **`{release}-fake-gateway`** (sandbox only): routes when `auth.asIngress` is set, for environments without Tyk.
 

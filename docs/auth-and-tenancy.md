@@ -1,6 +1,6 @@
 # Auth And Tenancy
 
-Last reviewed: 2026-06-24; amended 2026-07-29 to make this doc the owner of the sidecar-vs-in-pod question and to convert cache/window constants into their consequences. **Not re-verified:** which specific services still run the sidecar, the environment-profile details, and the division-context section. Check those against the cluster and code before relying on them.
+Last reviewed: 2026-06-24; amended 2026-07-29 to make this doc the owner of the sidecar-vs-in-pod question and to convert cache/window constants into their consequences; amended 2026-07-31 to split the CSA tenant-resolution path in two (in-pod `CsaTenantResolver` everywhere vs the `ddmr-authorizer-tenant` HAProxy subrequest, now integration-only) and to drop the removed `rejectRequestInStageHack`. **Not re-verified:** which specific services still run the sidecar, the environment-profile details, and the division-context section. Check those against the cluster and code before relying on them.
 
 ## Overview
 
@@ -82,16 +82,26 @@ This tells the sidecar to map the CSA `tenant_id` claim or the M2M `https://www.
 
 ## Tenant Resolution Flow (CSA path)
 
-For user-facing requests (CSA tokens), the `ddmr-authorizer-tenant` service resolves an opaque customer/org identity into a stable UUID tenant ID before the request reaches downstream services. The authorizer is invoked as a subrequest by HAProxy (via `auth-url` annotation), not as an inline proxy.
+For user-facing requests (CSA tokens), an opaque customer/org identity is resolved into a stable UUID tenant ID by looking up `ORG#<organizationId>#<instanceId>` in the `tenant-authorizer` DynamoDB table. **Two different components do that lookup, and which one runs depends on the environment:**
+
+- **In-pod (`CsaTenantResolver`): all environments including prod.** DSS's own `JwtFilter` resolves claimless CSA tokens against the table directly, using `jwt.csa-tenant-resolver.table` from `declaration-storage-service/values/values-*.yaml`. This is the path that matters in production.
+- **HAProxy subrequest to `ddmr-authorizer-tenant`: integration only.** The `auth-url` annotation path below still exists, but the service backing it was removed from prod, stage, dev-sandbox, and perf in May 2026 (DDMR-1085); it survives in `ddmr-integration` for Pyro's tests. See `services/ddmr-authorizer-tenant.md` for the provenance and the trap that the orphaned `helm/auth/values-prod*.yaml` files imply otherwise.
+
+**The table outlived the service.** `ddmr-tenant-authorizer` is still read in production, by DSS, in-pod. Reasoning "the authorizer is gone from prod, so that table is dead" is wrong and breaks the 401 triage in `docs/dss-401-tenant-mismatch-playbook.md`, which remains valid.
+
+The authorizer, where it runs, is invoked as a subrequest by HAProxy (via `auth-url` annotation), not as an inline proxy.
 
 ```
-CSA path (e.g. DSS with ingress.legacyEnabled):
+CSA path via HAProxy subrequest (INTEGRATION ONLY -- gated on DSS ingress.claimlessCsaSupport):
   Client -> HAProxy Ingress ({release}-authorized, path /api)
          -> HAProxy calls tenant-authorizer-svc:8080/authorize as auth subrequest
             * validates CSA JWT, resolves tenant in DynamoDB
             * returns X-TenantId and X-Auth-Src headers
          -> HAProxy injects response headers, forwards to service port 8080 (no sidecar)
          -> service reads X-TenantId from request headers
+
+CSA path in prod/stage/perf/sbox (no authorizer service involved):
+  Client -> DSS pod port 8080 -> JwtFilter -> CsaTenantResolver -> tenant-authorizer table
 
 M2M path (all services via Tyk):
   Service A -> Tyk Gateway (strips X-TenantId, validates M2M JWT)
@@ -103,7 +113,7 @@ The `ddmr-authorizer-tenant` is a Spring Boot WebFlux service acting as a Lambda
 
 - Validates the CSA JWT via Spring Security's `oauth2ResourceServer().jwt()` with the CSA JWKS URI from S3.
 - Requires `token_use == "access"` on the JWT.
-- When the `rejectRequestInStageHack` feature flag is enabled: **deliberately** rejects the first request per `(organizationId, customerId)` pair for a fixed window, to simulate a missing `tenant_id` claim. It also checks that the JWT scope matches `all-basic-cloud-services:allow`. **Trap:** a 401 in stage may be this hack rather than a real failure. Check whether the flag is on before debugging further.
+- Requires the JWT scope to match `all-basic-cloud-services:allow`, unconditionally and non-configurably. **Trap:** an otherwise-valid CSA token missing that one scope 401s, and it looks like a credential problem. (An earlier version of this doc described a `rejectRequestInStageHack` flag that deliberately rejected first requests in stage. That property no longer exists in the code; only the hardcoded scope check survives from it.)
 - Looks up the mapping `ORG#<organizationId>#<instanceId>` in a DynamoDB table (`tenant-authorizer`) keyed by `pk`.
 - If no entry exists and `generateTenantId` is enabled, generates a UUID and writes it with a condition expression to prevent race conditions.
 - If the JWT carries a `tenant_id` claim and it disagrees with the stored record, logs a warning and flags the record for migration (`claimTenantMigration` attribute).
@@ -250,7 +260,7 @@ Key differences from commercial stage:
 
 | Header | Source | Required | Behavior if absent |
 |---|---|---|---|
-| `X-TenantId` | JWT sidecar (M2M path) or tenant-authorizer via HAProxy (CSA path) | Yes | `AbstractApiRequest` throws 401 |
+| `X-TenantId` | JWT sidecar or in-pod filter (M2M path); tenant-authorizer via HAProxy only on the integration CSA path | Yes | `AbstractApiRequest` throws 401 |
 | `X-EnvironmentId` | JWT sidecar (from JWT claim) | No | `tenantEnv` is `null` |
 | `X-Auth-Src` | `ddmr-authorizer-tenant` (CSA path only) | No | Informational only, not read by scoping-engine |
 | `X-B3-TraceId` / `X-B3-SpanId` | Tracing infrastructure | No | MDC context left unpopulated |
@@ -267,9 +277,16 @@ kubectl --context <ctx> -n ddmr-<env> get pod -l app=<service> \
 # Authoritative gateway upstream (tells you 7070 sidecar vs 8080 app)
 git -C ~/Projects/DDmR/tyk-gateway-management grep -n 'target_url' origin/master | grep -i <service>
 
-# Feature-flag and authorizer config actually in force for an environment
-git -C ~/Projects/DDmR/platform-shared-values grep -rn \
-  'generateTenantId\|rejectRequestInStageHack\|authEnabled'
+# Feature-flag config in force for an environment
+git -C ~/Projects/DDmR/platform-shared-values grep -rn 'authEnabled'
+
+# Authorizer config lives in ddmr-deployments, NOT platform-shared-values (grep there matches nothing),
+# and only the integration file is still applied to anything
+grep -rn 'generate-tenant-id\|table:' ~/Projects/DDmR/ddmr-deployments/helm/auth/
+git -C ~/Projects/DDmR/ddmr-deployments show origin/main:argo/apps/tenant-authorizer-appset.yaml
+
+# Which component resolves CSA tenants in a given env: this is the prod path (in-pod, read-only)
+grep -rn -A1 'csa-tenant-resolver' ~/Projects/DDmR/declaration-storage-service/values/
 
 # Which tenant an instance resolves to (generated vs real platform tenant)
 aws dynamodb scan --table-name ddmr-tenant-authorizer \

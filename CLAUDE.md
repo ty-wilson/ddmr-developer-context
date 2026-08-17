@@ -16,7 +16,7 @@ All services below participate in the Blueprints system (`system: blueprints` in
 - **declaration-storage-service**: Persists declaration data (DynamoDB). Publishes `declaration-assignment-changed` events.
 - **blueprint-component-custom-declarations**: Custom declarations blueprint component. Stateless adapter to DSS.
 - **ddmr-jwt-sidecar**: Micronaut JWT validation proxy, deployed as pod sidecar on port 7070.
-- **ddmr-authorizer-tenant**: API gateway authorizer that resolves JWT claims → tenant ID via DynamoDB lookup.
+- **ddmr-authorizer-tenant**: CSA tenant resolver (HAProxy subrequest). Integration-only since DDMR-1085; DSS does the lookup in-pod elsewhere.
 
 ### Ocean Team
 - **spring-m2m-authentication**: Spring Boot autoconfiguration library for M2M JWT auth. Servlet-only.

@@ -150,7 +150,11 @@ The `lib/` directory contains bundled Groovy JAR dependencies.
 
 `ddmr-deployments` is an older Helm-values repository that predates the `components` / ApplicationSet pattern. It carries a small number of tooling applications (scope-membership-tool, mdm-tool, tenant-migration) that use the older deployment pattern.
 
-**Trap: a declaration in this repo does not mean the thing is running.** `ddmr-deployments` declares the tenant-migration CronJob as enabled, but that job cannot function since the `tenant_index` GSI it queries was removed (DDMR-1035); see `database.md`. Confirm against the cluster (`kubectl get cronjob -A`) rather than reading intent from this repo.
+**Trap: a file in this repo does not mean the thing is running, and here that cuts two ways.**
+- The tenant-migration CronJob is declared, is now `suspend: true` in all environments (`4c074ec`, 2026-06-25), *and* could not function anyway because the `tenant_index` GSI it queries was removed (DDMR-1035). See `database.md`.
+- `helm/auth/` still holds `values-prod*.yaml`, `values-stage.yaml`, `values-dev.yaml` and `values-perf.yaml` for the tenant-authorizer, but DDMR-1085 (`ce1e30d`, 2026-05-04) cut the appset's generator list down to a single `integration` entry, so those files configure nothing. **For these list-generator appsets the generator block, not the presence of a values file, tells you where a thing is deployed.**
+
+Confirm against the cluster (`kubectl get cronjob -A`, `kubectl get deploy -A`) rather than reading intent from this repo.
 
 Structure:
 - `argo/apps/`: ArgoCD ApplicationSet YAMLs for the remaining tools. These use a `list` generator (explicit cluster/namespace entries) rather than the `clusters` selector pattern, and point directly at `helm/` subdirectories in this repo as their source. Example: `scope-membership-tool-appset.yaml`, `mdm-tool-appset.yaml`, `tenant-migration-job-appset.yaml`, `tenant-authorizer-appset.yaml`.

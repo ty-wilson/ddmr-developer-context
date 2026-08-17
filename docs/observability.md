@@ -13,7 +13,7 @@ Dashboard JSON lives in the `grafana-dashboards` repo under `grafana-dashboards/
 | `Declaration-Service.json` | Declaration Service HTTP and JVM metrics |
 | `Declaration-Storage.json` | Declaration Storage Service HTTP and JVM metrics |
 | `Declaration-Storage-Events.json` | Declaration Storage event processing metrics |
-| `Tenant-Authorizer.json` | Tenant Authorizer metrics |
+| `Tenant-Authorizer.json` | Tenant Authorizer metrics. **Only integration reports data**: the service was removed from prod/stage/dev/perf in DDMR-1085, so an empty panel with `env` set to anything else is expected, not an outage. |
 | `Service-Logs.json` | Cross-service log viewer (Loki datasource), filterable by service, namespace, and pod |
 
 Dashboards use Prometheus (via Thanos) as their primary datasource and Loki for logs. Common label dimensions are `env`, `namespace`, `region`, `service`, and `pod`.
@@ -201,7 +201,7 @@ Dev tables (commercial, us-east-2):
 
 - `ddmr-dev-scoping-engine`: scope, scope-group, membership, device-channel, device-sync (key patterns in `database.md`)
 - `ddmr-dev-declaration-storage`: declarations + assignments (`MDM#<tenant>|<device>|<channel>` / `A#<identifier>`)
-- `tenant-authorizer`: CSA-tenant resolution (per-env table name; check helm values)
+- `tenant-authorizer`: CSA-tenant resolution (per-env table name; check helm values). Read in prod by DSS in-pod, not by the authorizer service, which runs only in integration (see `database.md`).
 
 ```bash
 aws dynamodb query --profile stable_dev --region us-east-2 \

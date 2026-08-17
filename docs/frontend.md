@@ -1,6 +1,11 @@
 # Frontend
 
-Last reviewed: 2026-07-29. Re-verified against code/live endpoints on that date: the MDM schema + translations pipeline, the CP-vs-declarations consumption split, and JSFG's localization handling. The monorepo/tooling and MFE-app sections were not re-verified and are older; treat them as a pointer only.
+Last reviewed: 2026-08-11. Re-verified against code and live endpoints on that date: the mdm-schema
+serving hosts and their auth/CORS behaviour, the prod-tier-only consumption contract (confirmed with
+Goldminers), where `GET /v1/version` actually comes from, the translations locale matching rules, and
+the host/remote DOM boundary. Earlier pass on 2026-07-29 covered the schema + translations pipeline, the
+CP-vs-declarations consumption split, and JSFG's localization handling. The monorepo/tooling and MFE-app
+sections have not been re-verified since before then; treat them as a pointer only.
 
 ## micro-frontend-hub monorepo
 
@@ -75,6 +80,18 @@ Remote bundles are served from CloudFront CDN at `cdn.mfe.jamf.io/<app-name>/<se
 
 Remotes inject their own stylesheets into the `feature-app-container` web component's shadow DOM using the `@jmf/vite-css-injection` or `@jmf/webpack-css-injection` lib. This prevents style bleed between MFEs.
 
+### Trap: a remote cannot reach host DOM by walking up
+
+Remotes are rendered into the host's **slotted** content, and host chrome such as the component drawer
+is a Nebula web component that keeps its own internals (including its scrolling element) inside its
+shadow root. Slotted content's `parentNode` chain runs up the light DOM to the slotting element and
+**stops**, so it never enters that shadow root. A `closest()` or parent walk therefore searches a branch
+that cannot contain the target, and fails in a way that looks like a timing bug. Following
+`assignedSlot` does reach it, but doing so is banned by
+`micro-frontend-hub/.claude/rules/architecture/mfe-host-communication.md` ("Reaching through Shadow
+DOM"), because there is no typed contract and host markup changes break it silently. Anything a remote
+needs from host chrome goes through a Feature Hub service. Worked example and the reasoning: OCEAN-433.
+
 ### Services provided to remotes
 
 All services are discovered by string ID at runtime. Key services from `libs/`:
@@ -135,9 +152,45 @@ An internal ALB at `{env}.mdm-schema.jamf.build` routes to a path-mapping Lambda
 - `GET /v1/translations/{schemaVersion}/{payloadType}/{locale}`: translations
 - `GET /v1/declarative/{schemaVersion}/{category}/{shortType}`: raw Apple DDM declaration schema
 
-Environments: `dev.mdm-schema.jamf.build`, `stage.mdm-schema.jamf.build`, `prod.mdm-schema.jamf.build`.
+Hostnames differ by tier. Non-prod is `api.{dev,stage}.mdm-schema.jamf.build`; prod is regional,
+`{use2,euc1,apne1}.mdm-schema.platform.jamfapps.io` (from `mdm-schema-ingest-infrastructure`
+`terragrunt/*/env.hcl` and `*/region.hcl`). **All of them are publicly resolvable, answer
+unauthenticated, and send `access-control-allow-origin: *`**, so a browser in any environment can read
+any tier directly. Verify before assuming otherwise:
 
-**Two version notions, and they can differ.** The ingest keeps a "latest ingested" version in SSM (`/mdm_schema/version/device-management`). That's the version new content is uploaded *under*. `GET /v1/version` returns the "last **supported** version", which is what the MFEs request and can *lag* the ingested one. So freshly-ingested schema/translations can exist at a version the UI isn't asking for yet. (`sbox` local dev reads the `dev`-tier buckets.)
+```bash
+# 200 with no auth from anywhere; the prod regions are byte-identical to each other in practice
+curl -sSI "https://use2.mdm-schema.platform.jamfapps.io/v1/translations/27/com.apple.configuration.content-cache.settings/en-US" | head -3
+```
+A bare `dig +short` is a bad instrument here and reports nothing for hosts that resolve fine. Use
+`curl` and read the failure mode.
+
+**Trap: mdm-schema is a library, and consumers are meant to read the prod tier only.** Goldminers
+(2026-08-11): dev and stage exist for their own Lambda development. Version numbers are *not*
+guaranteed to correspond across tiers, they only try to keep them aligned, and dev is explicitly
+unstable and realigned only occasionally. Content at the same version number in two tiers is usually
+but not always identical, which is exactly what makes it misleading. Treat any per-env framing below
+as describing the *deploy* mechanism, not a supported consumption model.
+
+Both Blueprints MFEs derive the mdm-schema host from the gateway of whatever environment they are
+deployed in (`getBaseServiceUrl` / `getMdmSchemaUrl` in each app's `client/helpers.ts`), so a
+dev-hosted frontend reads the dev tier. That resolves correctly in prod, which is why it went
+unnoticed, and it is why a translations change cannot be verified on a dev instance. Read those two
+helpers to see whether this still holds; the contract above was confirmed with Goldminers 2026-08-11.
+
+**Two version notions, and they can differ.** The ingest keeps a "latest ingested" version in SSM
+(`/mdm_schema/version/device-management`), which is the version new content is uploaded *under*. The
+version the MFEs *request* comes from `GET /v1/version`, and it can lag. So freshly ingested content
+can sit at a version nothing asks for. (`sbox` local dev reads the `dev`-tier buckets.)
+
+**`GET /v1/version` is not served by the mdm-schema ALB.** The path-mapping Lambda matches only the
+four routes above, so hitting `/v1/version` on those hosts 403s. It comes from
+**`configuration-profile-service`** (`SupportedSchemaRs`), and the value is a *build-time constant*:
+`PropertyFileMdmSchemaProvider` reads a `schema.version` Spring property, which is unset, and falls
+back to `supported-schema.txt` baked into the jar from `mdm.schema.version` in `gradle.properties`. One
+image ships to every environment by design, so **there is no per-environment override to bump**, and
+adding one would break the tiers whose buckets lack that version. Read the current value from
+`gradle.properties` on `main`, not from memory.
 
 ---
 
@@ -169,6 +222,37 @@ Override fields (all optional, keyed per property):
 - `jamfEnums`: map raw `enum`/`rangelist` values to human-readable dropdown labels. Partial maps are fine; unmapped values fall back to the raw value.
 
 **Consumption / `$ref` handling:** JSFG resolves `$ref`s in **both** the schema (`unrefSchema`) and the localizations (`unrefLocalizations`), so fields behind a `$defs`/`$ref` (e.g. array-item types) get localized too. `jamfEnums` reach the Select widget via `setLocalizations(...)`.
+
+**Trap: the locale path segment must be an exact region-qualified match, and a miss is silent.** Only
+the region-qualified locale directories exist in the bucket. Anything else, including the bare language
+code, 404s:
+
+```bash
+T=com.apple.configuration.content-cache.settings
+for L in en-US en en-GB de-DE de fr; do
+  printf '%-7s %s\n' "$L" "$(curl -sS -o /dev/null -w '%{http_code}' \
+    "https://api.stage.mdm-schema.jamf.build/v1/translations/27/$T/$L")"
+done
+```
+
+This matters because the locale the MFEs hold is **whatever Jamf Pro reports for the signed-in user**,
+delivered through the user-preferences service and applied by
+`libs/react-remote-wrapper/src/LocalizationProvider.tsx` calling `i18next.changeLanguage(locale)`. Jamf
+Pro's own API types that value as a bare code (see `apps/ascent/src/api/pro/types.gen.ts`), so bare
+codes are the normal case. i18next's `fallbackLng` does **not** help: it is a lookup-time fallback for
+i18next's own resource bundles and never rewrites `i18n.language`. `i18n.resolvedLanguage` is not the
+fix either, because it reports whichever bundle actually served the strings and collapses toward the
+fallback under lazy loading.
+
+The mapping has been solved independently in several apps as `mapLanguageCodeToTag`
+(`apps/blueprints/src/utils/useSelectedLanguage.ts`, `blueprint-component-app-managed`,
+`blueprint-component-ai-governance`). Grep for it before writing another copy. Fixed for declarations
+in DDMR-1311.
+
+Both client wrappers swallow the failure (`catch { return {} }` in each app's `client/mdm-schema.ts`),
+so a 404 is indistinguishable from "this type has no overrides" unless the call site logs it. A form
+rendering Apple's raw text with no Jamf overrides anywhere is the signature of this, not of missing
+translation data.
 
 **CP vs declarations divergence.** Two mechanisms deliver localization, and they are easy to conflate:
 
@@ -244,10 +328,25 @@ curl -s -H "X-TenantId: default-tenant" -H "tenantId: default-tenant" \
 # Served translations, including jamfTitle / jamfDescription / jamfEnums
 curl -s "$GW/v1/translations/<ver>/<fullDeclarationType>/en-US"
 
-# Deploy a translations branch to an env bucket (dev|stage|prod)
+# Deploy a translations branch to an env bucket (dev|stage|prod).
+# The folder written is whatever SSM says at dispatch time, NOT a value you choose.
 gh workflow run s3-upload.yml --repo jamf/mdm-schema-translations \
   -f env=dev -f ref_name=<branch>
 ```
+
+**Which build is a CDN tag actually serving?** A stale alias looks identical to a fresh one in the UI,
+so date the bundle and grep it for the feature you expect. Property names survive minification, so
+grepping for an identifier is a reliable capability test:
+
+```bash
+BASE=https://cdn.mfe.jamf.io/json-schema-form-generator/<tag>   # latest | stable | <semver>
+curl -sSI "$BASE/assets/remoteEntry.js" | grep -i last-modified
+# then fetch each ./assets/*.js named in $BASE/index.html and grep for the symbol, e.g. jamfEnums
+```
+
+Note that `gh api .../actions/runs` reports `head_branch` and `head_sha` for the *dispatch ref*, not for
+`inputs.ref_name`. A run that checked out a feature branch still shows `main`. The checkout step in the
+run log is the only witness.
 
 If a declaration renders or validates unexpectedly, diff the **served** schema against what the MFE hands JSFG. The allow-list trap above means the two can legitimately differ.
 

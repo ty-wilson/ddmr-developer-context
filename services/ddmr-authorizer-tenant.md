@@ -1,6 +1,6 @@
 # DDmR Authorizer Tenant
 
-Last reviewed: 2026-07-29. Re-verified against `origin/main` on that date: the full `AuthorizeHandler` request flow and its four 401 message strings, the `TenantAuthorizerProperties` field set, `A_TIME_GRANULARITY`'s existence and effect, and the per-environment table names and `generate-tenant-id` settings in `ddmr-deployments/helm/auth/`. **Corrected on that date:** the `rejectRequestInStageHack` property described by the previous review no longer exists in the code (see Configuration). **Not re-verified and older:** the DynamoDB attribute list and the `ddmr-tenant-migration-job` interaction, which date from 2026-06-24. Commands to re-derive everything are in "Where to find the data" at the end.
+Last reviewed: 2026-07-31. Re-verified on that date against `origin/main` **and the live clusters**: the deployment scope (integration only, see below), the tenant-migration CronJob's suspended state, and DSS's in-pod `CsaTenantResolver` as the surviving reader of the table. **Corrected on that date:** the previous review's per-environment table listed prod/stage/dev/perf as if the service were deployed there; it was removed from all four in May 2026 (DDMR-1085), two months before that review. **Verified 2026-07-29:** the `AuthorizeHandler` request flow and its four 401 message strings, the `TenantAuthorizerProperties` field set, `A_TIME_GRANULARITY`'s existence and effect; and the `rejectRequestInStageHack` property described by an earlier review was confirmed gone from the code (see Configuration). **Not re-verified and older:** the DynamoDB attribute list, which dates from 2026-06-24. Commands to re-derive everything are in "Where to find the data" at the end.
 
 **Owner:** DDmR team
 
@@ -11,6 +11,18 @@ Last reviewed: 2026-07-29. Re-verified against `origin/main` on that date: the f
 DDmR Authorizer Tenant is a Spring Boot WebFlux service (not a Lambda despite the name) used by HAProxy as a sub-request authorizer. When a device or client presents a CSA (Cloud Services Architecture) access token, HAProxy calls this service's `/authorize` endpoint. The service validates the JWT, extracts the organization ID and customer/instance ID, looks up or generates a stable tenant ID from DynamoDB, and returns that tenant ID in the `X-TenantId` response header. HAProxy then forwards the header to the upstream service. It is the canonical source of truth for the `organizationId + instanceId → tenantId` mapping across the DDmR platform.
 
 It is **only** on the CSA path. See `docs/auth-and-tenancy.md`, which owns the question of which ingress path a given service uses.
+
+---
+
+## Deployment Scope: integration only
+
+**The service runs in `ddmr-integration` and nowhere else.** `ddmr-deployments` commit `ce1e30d` (DDMR-1085, 2026-05-04, "Mostly remove tenant-authorizer") deleted the prod (`us-east-1`, `eu-central-1`, `ap-northeast-1`), stage, dev-sandbox, and perf entries from the generator list in `argo/apps/tenant-authorizer-appset.yaml`, leaving a single `integration` element. The commit message records why the last one survived: *"Still deployed into Integration due to Pyro tests."*
+
+**Its tenant-resolution job did not disappear with it, it moved in-pod.** DSS now performs the same `ORG#<organizationId>#<instanceId>` lookup itself in `com.jamf.declarationstorage.auth.CsaTenantResolver`, against the same table, configured per environment as `jwt.csa-tenant-resolver.table` in `declaration-storage-service/values/values-*.yaml`: set in prod, stage, perf, and sbox as well as integration. So the `ddmr-tenant-authorizer` **table is still live in production even though the service is not**, and the table-based triage in `docs/dss-401-tenant-mismatch-playbook.md` remains valid there. Do not read "the authorizer is gone from prod" as "the authorizer table is dead"; that inference is wrong and it invalidates the wrong playbook steps.
+
+**Trap: a values file in `helm/auth/` is not evidence of a deployment.** `values-prod*.yaml`, `values-stage.yaml`, `values-dev.yaml`, and `values-perf.yaml` all still sit in that directory, orphaned by DDMR-1085 and referenced by nothing. The generator list in the appset is the only thing that decides where this runs.
+
+**It is not a dormant leftover.** On the integration cluster on 2026-07-31 it was serving **thousands of `/authorize` calls per hour** (~6k in a sampled hour, two ready pods, dozens of distinct `customerId`s, zero rejections). Removing it breaks Pyro's test estate rather than quietly freeing a pod. Re-derive with the commands at the end rather than trusting that figure. Note that per-pod log buffers roll over well inside 24h, so a `--since=24h` count reads *lower* than a `--since=1h` one and is not a daily total.
 
 ---
 
@@ -75,17 +87,9 @@ The previous review of this page also documented `tenant-authorizer.rejectReques
 
 Other configuration is Spring/AWS standard: `aws.dynamodb.table` (required), `aws.dynamodb.localPort` (set to target a local DynamoDB), `aws.dynamodb.region` plus pool/timeout knobs in `AwsProperties`, and `csa.jwt.s3-host` for CSA key fetch. Read defaults from `AwsProperties.kt` and `src/main/resources/application.yaml`; do not quote them from here.
 
-Deployment values are **not in this repo**. They live in `ddmr-deployments/helm/auth/values-*.yaml`, applied by `ddmr-deployments/argo/apps/tenant-authorizer-appset.yaml`. As of 2026-07-29:
+Deployment values are **not in this repo**. They live in `ddmr-deployments/helm/auth/values-*.yaml`, applied by `ddmr-deployments/argo/apps/tenant-authorizer-appset.yaml`, but only the integration files are still wired to anything (see Deployment Scope). Integration runs against table `ddmr-integration-tenant-authorizer` with `tenant-authorizer.generate-tenant-id: true`; read the rest from the file rather than quoting it here.
 
-| Environment | Table | `generate-tenant-id` |
-|---|---|---|
-| prod (us-east-1, eu-central-1, ap-northeast-1) | `ddmr-tenant-authorizer` | not set, so `false` |
-| stage | `ddmr-tenant-authorizer` | **`true`** |
-| integration | `ddmr-integration-tenant-authorizer` | **`true`** |
-| dev (sandbox) | `sandbox-authorizer` | not set, so `false` |
-| perf | `performance-authorizer` | not set, so `false` |
-
-**Trap: generation is enabled in stage and integration, which is how generated tenants get minted in the first place.** "Generation is off in production" is true and is often quoted as if it meant generated tenants cannot exist. Records with a generated `tenantId` and no `platformTenant` are created in the lower environments and are the population that later diverges. Re-read the values files before asserting the setting for any environment.
+**Trap: generation was enabled in stage and integration, which is how generated tenants got minted in the first place.** "Generation is off in production" is true and is often quoted as if it meant generated tenants cannot exist. Records with a generated `tenantId` and no `platformTenant` were created in the lower environments and are the population that later diverges, and prod's table still holds that population, whether or not the service runs there.
 
 ---
 
@@ -124,12 +128,32 @@ git -C $AT grep -n 'A_TIME_GRANULARITY\|platformTenant\|claimTenantMigration' or
   -- src/main/kotlin/com/jamf/serviceauthorizertenant/repository/DynamoDbTenantIdRepository.kt
 ```
 
-Deployment reality is in a different repo, and is what actually decides behaviour per environment:
+Deployment reality is in a different repo, and is what actually decides behaviour per environment. **Read the appset's generator list, not the values files**: the latter outlived the deployments they configured:
 
 ```bash
 DEP=~/Projects/DDmR/ddmr-deployments; git -C $DEP fetch origin -q
-grep -rn 'generate-tenant-id\|table:' $DEP/helm/auth/values-*.yaml
-git -C $DEP show origin/main:argo/apps/tenant-authorizer-appset.yaml
+git -C $DEP show origin/main:argo/apps/tenant-authorizer-appset.yaml   # which envs still exist
+git -C $DEP log --oneline origin/main -- argo/apps/tenant-authorizer-appset.yaml
+grep -rn 'generate-tenant-id\|table:' $DEP/helm/auth/values-integration.yaml
 ```
 
-Before concluding a record is unmigrated, confirm the migration job can even run. `docs/database.md` records that it queries a `tenant_index` GSI removed under DDMR-1035, so check the cluster rather than the GitOps config: `kubectl get cronjob -A | grep tenant-migration`.
+Then confirm against the clusters, which is the only way to distinguish "declared" from "running":
+
+```bash
+kubectl --context integ -n ddmr-integration get deploy,svc,pods | grep -i authorizer
+for c in prod-use1 prod-euc1 prod-apne1; do kubectl --context $c get deploy -A | grep -ci authorizer; done
+# Is it actually serving traffic? Two gotchas in this one line:
+#  - the pod selector label is `application`, not `app` (`app=` silently matches nothing)
+#  - `logs -l` defaults to --tail=10 PER POD, so without --tail=-1 any count you take is really "10"
+kubectl --context integ -n ddmr-integration logs -l application=tenant-authorizer \
+  --since=1h --tail=-1 | grep -c 'Detected customer request'
+```
+
+The surviving prod reader of the table is DSS, not this service, so check its config too:
+
+```bash
+grep -rn -A1 'csa-tenant-resolver' ~/Projects/DDmR/declaration-storage-service/values/
+grep -rn 'claimlessCsaSupport' ~/Projects/DDmR/declaration-storage-service/values/   # gates the HAProxy auth-url ingress
+```
+
+Before concluding a record is unmigrated, confirm the migration job can even run. It is **suspended in every environment** (`suspend: true` in `ddmr-deployments/helm/tenant-migration/templates/tm-chronjob.yaml` since commit `4c074ec` (2026-06-25), confirmed `SUSPEND=True` in `ddmr-prod`, `ddmr-stage`, and `ddmr-integration` on 2026-07-31), and separately it queries a `tenant_index` GSI removed under DDMR-1035 (see `docs/database.md`), so it could not function even if resumed. Check state with `kubectl get cronjob -A | grep tenant-migration`.

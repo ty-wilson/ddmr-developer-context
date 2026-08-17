@@ -1,6 +1,6 @@
 # Database
 
-Last reviewed: 2026-07-29 (Tyler Wilson). Re-verified against `declaration-storage-service` code on that date: the DSS assignment `tag` semantics, `declaration_index` not being tenant-scoped, and declaration IDs being random UUIDs. **Not re-verified and older:** the scoping-engine key patterns, the tenant-authorizer table, and the cross-service isolation notes. Treat those as pointers and confirm before relying on them.
+Last reviewed: 2026-07-31 (Tyler Wilson). Verified on that date: the tenant-migration CronJob's suspended state in prod/stage/integration, and that the `tenant-authorizer` table is still read in prod by DSS's in-pod `CsaTenantResolver` even though the authorizer *service* now runs only in integration (DDMR-1085). Verified 2026-07-29 against `declaration-storage-service` code: the DSS assignment `tag` semantics, `declaration_index` not being tenant-scoped, and declaration IDs being random UUIDs. **Not re-verified and older:** the scoping-engine key patterns, the tenant-authorizer table's attribute list, and the cross-service isolation notes. Treat those as pointers and confirm before relying on them.
 
 ## Overview
 
@@ -54,7 +54,7 @@ GSIs:
 
 There is **no `tenant_index`**. It was removed in DDMR-1035 (2026-04-02) from both Terraform and all live tables (staging, integration, and prod). The `ddmr-tenant-migration-job` queries `tenant_index` (see `DynamoDbService.kt`), so it **cannot function** as written: the index it depends on no longer exists. That is a structural consequence of DDMR-1035, not a deployment state.
 
-**Trap: the GitOps config does not reflect reality here.** `ddmr-deployments` still declares this CronJob as enabled, so reading intent from that repo will tell you the job runs. Check the cluster instead: `kubectl get cronjob -A | grep tenant-migration`.
+**The CronJob is also suspended in every environment**, independently of the missing GSI: `suspend: true` in `ddmr-deployments/helm/tenant-migration/templates/tm-chronjob.yaml` since commit `4c074ec` (2026-06-25). Confirmed `SUSPEND=True` in `ddmr-prod`, `ddmr-stage`, and `ddmr-integration` on 2026-07-31. So there are two independent reasons it does not reconcile anything, and resuming it would not be sufficient: the GSI has to come back too. Check state rather than trusting either statement: `kubectl get cronjob -A | grep tenant-migration`.
 
 Key patterns:
 
@@ -81,14 +81,18 @@ GSIs:
 
 This table does not follow the `pkey`/`psort` convention. It uses `pk` as the sole primary key attribute.
 
+**It has two readers, and in prod only one of them is `ddmr-authorizer-tenant`.** DSS reads it directly, in-pod, via `CsaTenantResolver` (a single `GetItem` on `ORG#<org>#<instance>`), configured as `jwt.csa-tenant-resolver.table` in `declaration-storage-service/values/values-*.yaml`: prod, stage, perf, sbox and integration. The authorizer service itself was removed from every environment except integration in May 2026 (DDMR-1085), so **the table is live in production while its namesake service is not.** Only the authorizer writes (`tenantId`, `lastAccess`, `claimTenantMigration`); DSS never writes, which is why divergences stopped being flagged in prod. See `services/ddmr-authorizer-tenant.md` and `docs/dss-401-tenant-mismatch-playbook.md`.
+
 ## Cross-service isolation
 
-Services own their own tables and do not cross-read. For example:
+Services mostly own their own tables and avoid cross-reading. For example:
 
 - Scoping engine stores declaration identifiers (`DECL#<id>`) as foreign references in scope items, but calls declaration-storage-service over HTTP (via `DeclarationStorageWrapper`) for declaration creation, payload editing, and device assignment, rather than querying declaration-storage's table directly.
 - Declaration-storage-service stores assignment records keyed by device+channel but has no awareness of scoping engine's `SCOPE#` or `MEMBERSHIP#` items.
 
-Communication between services happens via HTTP (synchronous) or Pulsar events (asynchronous). There is no shared DynamoDB table between any two DDmR services.
+Communication between services happens via HTTP (synchronous) or Pulsar events (asynchronous).
+
+**The one documented exception to table ownership is the `tenant-authorizer` table**, which DSS reads directly (see above) rather than calling the authorizer over HTTP. An earlier version of this doc stated flatly that no DynamoDB table is shared between two DDmR services; that is not true of this one, and the sharing is deliberate: it is how CSA tenant resolution survived the authorizer service's removal from prod. Do not generalise the isolation rule into a guarantee when tracing a data path; confirm the reader set for the specific table.
 
 ## Terraform source
 
